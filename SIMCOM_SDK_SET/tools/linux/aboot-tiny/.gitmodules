@@ -1,0 +1,3 @@
+[submodule "os/net/security/tinydtls"]
+	path = os/net/security/tinydtls
+	url = https://github.com/contiki-ng/tinydtls.git

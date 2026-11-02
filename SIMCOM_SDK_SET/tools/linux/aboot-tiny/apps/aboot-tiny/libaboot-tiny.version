@@ -1,0 +1,12 @@
+LIBABOOT_TINY_1.0 {
+    global:
+        aboot_tiny_register_cb;
+        aboot_tiny_init;
+        aboot_tiny_start;
+        aboot_tiny_download_file;
+        aboot_tiny_download_data;
+        aboot_tiny_stop;
+        aboot_tiny_exit;
+    local:
+        *;
+};

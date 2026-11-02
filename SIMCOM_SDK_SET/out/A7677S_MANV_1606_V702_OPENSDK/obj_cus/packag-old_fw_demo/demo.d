@@ -1,0 +1,2 @@
+E:/22110B01V06A7677MxA_SDK_240721/SIMCOM_SDK_SET/out/A7677S_MANV_1606_V702_OPENSDK/obj_cus/packag-old_fw_demo/demo.o: \
+ demo.c

@@ -1,0 +1,693 @@
+{
+  "name": "ASR_CRANEL_EVB",
+  "product": "arom-tiny",
+  "version": "0.5",
+  "keyAlg": "rsa",
+  "hashAlg": "sha256",
+  "secureBoot": false,
+  "firmwareGenerator": {
+    "name": "crane",
+    "call-max-download-size": "60KiB",
+    "flash-max-download-size": "1MiB",
+    "use-lzma-compression": true
+  },
+  "fota": ["system"],
+  "variants": [
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_02MB",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_2MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_02MB_ASR5311",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_ASR5311_SINGLE_SIM_TEMPLATE",
+      "layout": "ASR1606_ASR5311_SINGLE_SIM_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_2MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_04MB",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_TEMPLATE",
+      "layout": "ASR1606_SINGLE_FLASH_LAYOUT_04MB",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_04MB_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_FLASH_LAYOUT_04MB_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_08MB",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_TEMPLATE",
+      "layout": "ASR1606_SINGLE_FLASH_LAYOUT_08MB",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_08MB_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_FLASH_LAYOUT_08MB_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_08MB_ASR5311",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_ASR5311_TEMPLATE",
+      "layout": "ASR1606_ASR5311_FLASH_LAYOUT_08MB",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_04MB_ASR5311",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_ASR5311_TEMPLATE",
+      "layout": "ASR1606_ASR5311_FLASH_LAYOUT_04MB",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_VOLTE",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_VOLTE",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_VOLTE_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_VOLTE_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_TTS",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_TTS",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_ASR5311",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_ASR5311",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_ASR5311_TTS",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_ASR5311",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_ASR5311_VOLTE",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_ASR5311_VOLTE",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_NVM",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_NVM",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_CQCY",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_NVM",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+	"name": "CRANEL_A0_SINGLE_SIM_08MB_DYDZ",
+	"version-bootrom": "2021.10.16",
+	"template": "ASR1606_SINGLE_SIM_TEMPLATE",
+	"layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_DYDZ",
+	"flashes": [
+	  {
+		"name": "qspi",
+		"port": "QSPI",
+		"flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+	  }
+	]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_ASR5311",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311",
+      "layout": "ASR1606_ASR5311_SINGLE_SIM_VOLTE_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_ASR5311_UBIA",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311_UBIA",
+      "layout": "ASR1606_ASR5311_SINGLE_SIM_VOLTE_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+	{
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_UBIA",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_UBIA",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_08MB_BT",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT_NVM",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_08MB_BT_NVM",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_02MB_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_02MB_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_02MB_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_2MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_TTS_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_TTS_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_APP_384K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_APP_384K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_WALNUT_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_WALNUT_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_BT",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_BT",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_BT_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_BT_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_ASR5311_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_ASR5311_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_ASR5311_AUDIO_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_ASR5311_AUDIO_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_ASR5311_APP_140K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_ASR5311_APP_140K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+        "name": "CRANEL_A0_SINGLE_SIM_04MB_BT_TBDTU_OPENSDK",
+        "version-bootrom": "2021.10.16",
+        "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_TBDTU_OPENSDK",
+        "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_BT_OPENSDK",
+        "flashes": [
+          {
+            "name": "qspi",
+            "port": "QSPI",
+            "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+          }
+        ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_NVM_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_NVM_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_NVM_ADSUN_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_NVM_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_ADSUN_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_APP_512K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_APP_512K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_NVM_APP_512K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_NVM_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_APP_512K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT_NVM_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_NVM_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT_NVM_SAFONE_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_NVM_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT_SAFONE_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT_TBDTU_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_TBDTU_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT_APP_512K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT_APP_512K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_BT_NVM_APP_512K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_NVM_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_BT_APP_512K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_APP_768K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_APP_768K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_ASR5311_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_ASR5311_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_ASR5311_APP_512K_OPENSDK",
+      "version-bootrom": "2021.10.16",
+    "template": "ASR1606_SINGLE_SIM_TEMPLATE_ASR5311_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_ASR5311_APP_512K_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_HX_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_BT_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_HX_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_04MB_GTK_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_FLASH_LAYOUT_04MB_GTK_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_4MB_B64KB_S4KB_P256"
+        }
+      ]
+    },
+    {
+      "name": "CRANEL_A0_SINGLE_SIM_08MB_WALNUT_OPENSDK",
+      "version-bootrom": "2021.10.16",
+      "template": "ASR1606_SINGLE_SIM_TEMPLATE_OPENSDK",
+      "layout": "ASR1606_SINGLE_SIM_VOLTE_FLASH_LAYOUT_08MB_WALNUT_OPENSDK",
+      "flashes": [
+        {
+          "name": "qspi",
+          "port": "QSPI",
+          "flash": "QSPI_NOR_8MB_B64KB_S4KB_P256"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+
+# ==========================================
+# SIMCOM A7677S SDK - Git Ignore
+# ==========================================
+
+# 1. Large SDK toolchain archives
+SIMCOM_SDK_SET/tools/linux/cross_tool.tar.bz2
+SIMCOM_SDK_SET/tools/win32/cross_tool.zip
+SIMCOM_SDK_SET/tools/win32/msys64.zip
+
+# 2. Compiled firmware and object files
+*.axf
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.a
+
+# 3. Ninja build temporary files
+.ninja_log
+.ninja_deps
+
+# 4. Temporary and backup files
+*.tmp
+*.bak
+*.log
+
+# 5. IDE temporary files
+.vscode/ipch/

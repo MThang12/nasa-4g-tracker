@@ -1,0 +1,148 @@
+[
+   {
+      "command" : "require",
+      "group" : "0",
+      "name" : "product",
+      "value" : "arom|arom-tiny"
+   },
+   {
+      "command" : "require",
+      "group" : "0",
+      "name" : "version",
+      "value" : "0.5"
+   },
+   {
+      "command" : "require",
+      "group" : "0",
+      "name" : "version-bootrom",
+      "value" : "2019.01.15"
+   },
+   {
+      "command" : "progress",
+      "group" : "0",
+      "name" : "weight",
+      "value" : 23242810
+   },
+   {
+      "command" : "call",
+      "group" : "0",
+      "image" : "preboot.img"
+   },
+   {
+      "command" : "call",
+      "group" : "0",
+      "image" : "flasher.img"
+   },
+   {
+      "command" : "partition",
+      "group" : "0",
+      "image" : "flashinfo.bin"
+   },
+   {
+      "command" : "partition",
+      "group" : "0",
+      "image" : "partition.bin"
+   },
+   {
+      "command" : "flash",
+      "group" : "1",
+      "image" : "bootloader.ubi",
+      "partition" : "bootloader",
+      "weight" : 258048
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "partition.bin",
+      "partition" : "ptable",
+      "weight" : 6284
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "fwcerts.bin",
+      "partition" : "fwcerts",
+      "weight" : 14324
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "ReliableData.bin",
+      "partition" : "rd",
+      "weight" : 131072
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "apn.bin",
+      "partition" : "apn",
+      "weight" : 47021
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "cp.bin",
+      "partition" : "cp",
+      "weight" : 11558912
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "dsp.bin",
+      "partition" : "dsp",
+      "weight" : 2120773
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "rf.bin",
+      "partition" : "rfbin",
+      "weight" : 40960
+   },
+   {
+      "command" : "flash",
+      "group" : "2",
+      "image" : "updater.bin",
+      "partition" : "updater",
+      "weight" : 201672
+   },
+   {
+      "command" : "erase",
+      "group" : "3",
+      "partition" : "fota_param",
+      "weight" : 16384
+   },
+   {
+      "command" : "erase",
+      "group" : "3",
+      "partition" : "fota_pkg",
+      "weight" : 5505024
+   },
+   {
+      "command" : "erase",
+      "group" : "4",
+      "partition" : "nvm",
+      "weight" : 3145728
+   },
+   {
+      "command" : "erase",
+      "group" : "4",
+      "partition" : "storage",
+      "productionOnly" : true,
+      "weight" : 65536
+   },
+   {
+      "command" : "erase",
+      "group" : "5",
+      "partition" : "factory_a",
+      "productionOnly" : true,
+      "weight" : 65536
+   },
+   {
+      "command" : "erase",
+      "group" : "5",
+      "partition" : "factory_b",
+      "productionOnly" : true,
+      "weight" : 65536
+   }
+]

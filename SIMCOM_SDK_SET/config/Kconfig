@@ -1,0 +1,249 @@
+mainmenu "SIMCOM openSDK USER configurations"
+
+#############################
+# SET SIMCOM PROTOCOL VERSION
+choice
+    prompt "SIMCOM PROTOCOL VERSION"
+    default SIMCOM_PROTOCOL_V1
+    help
+      select the VERSION of the SIMCOM PROTOCOL.
+
+config SIMCOM_PROTOCOL_V1
+    bool "V1"
+    help
+      old API and no demo protocol.
+
+config SIMCOM_PROTOCOL_V2
+    bool "V2"
+    help
+      new SAL OS API and new demo protocol and other is old.
+endchoice
+
+config SIMCOM_DEBUG
+    depends on SIMCOM_PROTOCOL_V2
+    bool "BUILD DEBUG VERSION"
+    default n
+
+config HAS_DEMO
+    bool "BUILD SIMCOM DEMO"
+    default y
+
+############################
+# SET DEMO UI OUTPUT PORT
+choice
+    prompt "DEMO UI communication port"
+    default SIMCOM_UI_DEMO_TO_UART1_PORT
+    depends on HAS_DEMO
+    help
+      select the port, which used to communicate with the DEMO.
+
+config SIMCOM_UI_DEMO_TO_UART1_PORT
+    bool "DEMO UI COMMUNICATION BY UART1"
+
+config SIMCOM_UI_DEMO_TO_USB_AT_PORT
+    bool "DEMO UI COMMUNICATION BY USB"
+endchoice
+
+menu "Demo for driver"
+    depends on HAS_DEMO
+
+############################
+# DEMO FOR DRIVER
+config HAS_DEMO_WTD
+    bool "BUILD WATCH DOG"
+    default y
+
+config HAS_DEMO_PMU
+    bool "BUILD PMU"
+    default y
+
+config HAS_DEMO_GPIO
+    bool "BUILD GPIO"
+    default y
+
+config HAS_DEMO_PWM
+    bool "BUILD PWM"
+    default y
+
+config HAS_DEMO_UART
+    bool "BUILD UART"
+    default y
+
+config HAS_DEMO_USB
+    bool "BUILD USB"
+    default y
+
+config HAS_DEMO_I2C
+    bool "BUILD I2C"
+    default y
+
+config HAS_DEMO_SPI
+    bool "BUILD SPI"
+    default y
+
+config HAS_DEMO_FLASH
+    bool "BUILD FLASH"
+    default y
+
+config HAS_DEMO_OTA
+    bool "BUILD OTA"
+    default y
+
+config HAS_DEMO_GNSS
+    bool "BUILD GNSS"
+    default y
+
+config HAS_DEMO_LCD
+    bool "BUILD LCD"
+    default y
+
+config HAS_DEMO_CAM
+    bool "BUILD CAM"
+    default y
+
+config HAS_DEMO_SYS
+    bool "BUILD SYS"
+    default y
+config HAS_DEMO_EXFLASHMOUNTFS
+    bool "BUILD EXFLASHMOUNTFS"
+    default y
+endmenu
+
+menu "Demo for modem"
+    depends on HAS_DEMO
+
+######################
+# DEMO FOR MODEM
+config HAS_DEMO_NETWORK
+    bool "BUILD NETWORK"
+    default y
+
+config HAS_DEMO_SIMCARD
+    bool "BUILD SIMCARD"
+    default y
+
+config HAS_DEMO_CALL
+    bool "BUILD CALL"
+    default y
+
+config HAS_DEMO_SMS
+    bool "BUILD SMS"
+    default y
+
+config HAS_DEMO_LBS
+    bool "BUILD LBS"
+    default y
+
+config HAS_DEMO_SJDR
+    bool "BUILD SJDR"
+    default y
+
+config HAS_DEMO_INTERNET_SERVICE
+    bool "BUILD INTERNET SERVICE"
+    default y
+
+endmenu
+
+menu "Demo for application"
+    depends on HAS_DEMO
+
+######################
+# DEMO FOR APP
+config HAS_DEMO_SSL
+    bool "BUILD SSL"
+    default y
+
+config HAS_DEMO_TCPIP
+    bool "BUILD TCPIP"
+    default y
+
+config HAS_DEMO_HTTPS
+    bool "BUILD HTTPS"
+    default y
+
+config HAS_DEMO_FTPS
+    bool "BUILD FTPS"
+    default y
+
+config HAS_DEMO_MQTTS
+    bool "BUILD MQTTS"
+    default y
+
+config HAS_DEMO_NTP
+    bool "BUILD NTP"
+    default y
+
+config HAS_DEMO_HTP
+    bool "BUILD HTP"
+    default y
+
+config HAS_DEMO_AUDIO
+    bool "BUILD AUDIO"
+    default y
+
+config HAS_DEMO_TTS
+    bool "BUILD TTS"
+    default y
+
+config HAS_DEMO_POC
+    bool "BUILD POC"
+    default y
+
+config HAS_DEMO_WIFI
+    bool "BUILD WIFI"
+    default y
+
+config HAS_DEMO_RTC
+    bool "BUILD RTC"
+    default y
+
+config HAS_DEMO_BLE
+    bool "BUILD BLE"
+    default y
+
+config HAS_DEMO_BT
+    bool "BUILD BT"
+    default y
+
+config HAS_DEMO_BT_STACK
+    bool "BUILD BT_STACK"
+    default y
+
+config HAS_DEMO_FS
+    bool "BUILD FS"
+    default y
+
+config HAS_DEMO_APP_DOWNLOAD
+    bool "BUILD APP DOWNLOAD"
+    default y
+
+config HAS_DEMO_APP_UPDATE
+    bool "BUILD APP UPDATE"
+    default y
+
+config HAS_DEMO_PING
+    bool "BUILD PING"
+    default y
+
+endmenu
+
+menu "Third lib configurations"
+
+config HAS_CJSON
+    bool "BUILD CJSON LIBRARY"
+    default y
+
+config HAS_ZLIB
+    bool "BUILD ZLIB LIBRARY"
+    default n
+
+config HAS_MIRACL
+    bool "BUILD MIRACL LIBRARY"
+    default n
+
+config HAS_SM2
+    bool "BUILD SM2 LIBRARY"
+    default n
+    select HAS_MIRACL
+
+endmenu

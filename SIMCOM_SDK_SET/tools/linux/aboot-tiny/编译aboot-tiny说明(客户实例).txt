@@ -1,0 +1,23 @@
+客户实例，仅供参考
+
+步骤 1 下载 fsl-imx-x11-glibc-x86_64-meta-toolchain-qte-cortexa7hf-vfp-neon-toolchain-qte-3.14.52-1.1.0.sh
+步骤 2 使用 root 权限安装解压至/opt 目录。
+
+步骤 3 配置PATH环境（针对步骤1的工具链(poky)可以跳过）
+vi /etc/profile，在文本最后追加一句命令, export PATH=/opt/gcc-linaro-7.5.0-2019.12-i686_arm-linux-gnueabihf/bin:$PATH。
+
+步骤 4 设置工具链(针对当前工具链(poky),一般是必须的）
+source /opt/fsl-imx-x11/3.14.52-1.1.0/environment-setup-cortexa7hf-vfp-neon-poky-linux-gnueabi
+export CFLAGS="-march=armv7-a -mfloat-abi=hard -mfpu=neon -mtune=cortex-a7 --sysroot=/opt/fsl-imx-x11/3.14.52-1.1.0/sysroots/cortexa7hf-vfp-neon-poky-linux-gnueabi/"
+export LDFLAGS="-march=armv7-a -mfloat-abi=hard -mfpu=neon -mtune=cortex-a7 --sysroot=/opt/fsl-imx-x11/3.14.52-1.1.0/sysroots/cortexa7hf-vfp-neon-poky-linux-gnueabi/" 
+
+步骤 5 验证编译工具安装OK
+arm-poky-linux-gnueabi-gcc  -v
+步骤 6 编译
+进入编译目录 以下是相对路径，请注意
+cd aboot-tiny/apps/aboot-tiny
+make -j 16 CONTIKI_VERSION_OVERRIDE=2021.01.08-9-ge7f964a3f CROSS_COMPILE_PREFIX=arm-poky-linux-gnueabi- HOST_OS=Linux
+
+
+对于Android的编译，要采用Android的工具链，例如以下
+make -j 16 CONTIKI_VERSION_OVERRIDE=2021.01.08-9-ge7f964a3f CROSS_COMPILE_PREFIX=arm-linux-androideabi- CC=armv7a-linux-androideabi16-clang LD_OVERRIDE=armv7a-linux-androideabi16-clang HOST_OS=Android

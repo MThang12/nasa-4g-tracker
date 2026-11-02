@@ -1,0 +1,80 @@
+#ifndef __USERSPACECONFIG_H__
+#define __USERSPACECONFIG_H__
+
+
+// general config
+#cmakedefine HAS_UART
+#cmakedefine HAS_URC
+#cmakedefine HAS_USB
+#cmakedefine SIMCOM_UI_DEMO_TO_UART1_PORT
+#cmakedefine SIMCOM_UI_DEMO_TO_USB_AT_PORT
+
+
+#cmakedefine SIMCOM_DEBUG
+#cmakedefine HAS_DEMO
+
+// driver
+#cmakedefine HAS_DEMO_WTD
+#cmakedefine HAS_DEMO_PMU
+#cmakedefine HAS_DEMO_GPIO
+#cmakedefine HAS_DEMO_PWM
+#cmakedefine HAS_DEMO_UART
+#cmakedefine HAS_DEMO_USB
+#cmakedefine HAS_DEMO_I2C
+#cmakedefine HAS_DEMO_SPI
+#cmakedefine HAS_DEMO_FLASH
+#cmakedefine HAS_DEMO_OTA
+#cmakedefine HAS_DEMO_GNSS
+#cmakedefine HAS_DEMO_LCD
+#cmakedefine HAS_DEMO_CAM
+#cmakedefine HAS_DEMO_SYS
+#cmakedefine HAS_DEMO_EXFLASHMOUNTFS
+
+// modem
+#cmakedefine HAS_DEMO_NETWORK
+#cmakedefine HAS_DEMO_SIMCARD
+#cmakedefine HAS_DEMO_CALL
+#cmakedefine HAS_DEMO_SMS
+#cmakedefine HAS_DEMO_LBS
+#cmakedefine HAS_DEMO_SJDR
+#cmakedefine HAS_DEMO_INTERNET_SERVICE
+
+// app
+#cmakedefine HAS_DEMO_SSL
+#cmakedefine HAS_TCPIP
+#cmakedefine HAS_DEMO_TCPIP
+#cmakedefine HAS_DEMO_HTTPS
+#cmakedefine HAS_DEMO_FTPS
+#cmakedefine HAS_DEMO_MQTTS
+#cmakedefine HAS_DEMO_NTP
+#cmakedefine HAS_DEMO_HTP
+#cmakedefine HAS_DEMO_AUDIO
+#cmakedefine HAS_DEMO_TTS
+#cmakedefine HAS_DEMO_POC
+#cmakedefine HAS_DEMO_WIFI
+#cmakedefine HAS_DEMO_RTC
+#cmakedefine HAS_DEMO_BLE
+#cmakedefine HAS_DEMO_BT
+#cmakedefine HAS_DEMO_BT_STACK
+#cmakedefine HAS_FS
+#cmakedefine HAS_DEMO_FS
+#cmakedefine HAS_DEMO_FS_OLD
+#cmakedefine HAS_DEMO_APP_DOWNLOAD
+#cmakedefine HAS_DEMO_APP_UPDATE
+#cmakedefine HAS_DEMO_PING
+
+// other libs
+#cmakedefine HAS_ZLIB
+#cmakedefine HAS_MIRACL
+#cmakedefine HAS_SM2
+#cmakedefine HAS_CJSON
+#cmakedefine HAS_MBEDTLS
+
+
+// custom switch
+#cmakedefine PROJECT_YSZNBG
+#cmakedefine PROJECT_TBDTU
+#cmakedefine PROJECT_LYTBOX
+#cmakedefine PROJECT_TOPFLY
+
+#endif /* __USERSPACECONFIG.H_H__ */
