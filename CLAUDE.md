@@ -159,6 +159,7 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 - Bản `sc_application.c` cũ ở thư mục gốc repo (không được build) **đã được người dùng xóa** ngày 04/11/2026 vì là file thừa. Bản này vẫn còn trong commit `bd25f7b` nếu cần tham khảo. Không tạo lại file `sc_application.c` ở thư mục gốc.
 - **Không sửa vendor SDK:** `sc_lib/`, `sc_lib_v2/`, `sc_demo/`, `sc_demo_v2/`, `kernel/`, `public_libs/`, `examples/`, `old_fw_demo/`, `tools/`, `sc_main.c`.
 - **Không sửa build system:** `Makefile`, `CMakeLists.txt`, `old_fw_Makefile`, `makeDepend.mak`, `config/*` (gồm `.config`, `userspaceConfig.h`, linker script `*.ld`, `ToolChain.*`), `out/**/build.ninja`.
+- **Không sửa thư mục output `SIMCOM_SDK_SET/out/`** (gồm `build.ninja`, `rules.ninja`, `CMakeCache.txt`, `.elf`/`.bin`/`.map`, `burn*.zip`). Nội dung `out/` chỉ được thay đổi gián tiếp qua lệnh build đã được người dùng duyệt.
 - Không xóa, đổi tên hay di chuyển file.
 - Nếu cần sửa file khác (ví dụ tắt `HAS_DEMO` trong `config/.config`): **giải thích lý do và chờ người dùng đồng ý** trước.
 - `CLAUDE.md` chỉ được cập nhật khi người dùng yêu cầu.
