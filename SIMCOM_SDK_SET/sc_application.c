@@ -149,7 +149,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.260731"
+#define TRACKER_FW_VERSION               "v1.0.261105"
 #define TRACKER_LOGIN_CODE               "007507"
 #define TRACKER_RESET_REASON             "R-0.0"
 
@@ -206,7 +206,7 @@
 #define NASA_MSG_BACKUP                  7
 
 /* --- Bit trạng thái NASA (trường "status" của NASA-2/7) ---
- * Hiện chỉ dùng GPS, ACC, BATTERY_OK; các bit còn lại để dành cho mở rộng. */
+ * Hiện chỉ dùng GPS, FLASH_OK, ACC, BATTERY_OK; các bit còn lại để dành cho mở rộng. */
 #define TRACKER_STATUS_BIT_GPS           (1UL << 0)
 #define TRACKER_STATUS_BIT_FLASH_OK      (1UL << 1)
 #define TRACKER_STATUS_BIT_ACC           (1UL << 2)
@@ -270,6 +270,7 @@ static int backup_head = 0, backup_tail = 0, backup_count = 0;
 static uint32_t last_backup_time = 0;   /* giây trong ngày của lần backup gần nhất */
 static long flash_read_offset = 0;      /* vị trí đang đọc dở trong file backup trên flash */
 static BOOL flash_has_data    = FALSE;  /* cache: có file flash chưa gửi? Chỉ mở file khi cần thực sự */
+static BOOL flash_ok          = TRUE;   /* bit 1 trạng thái: FALSE khi lần ghi backup xuống flash gần nhất bị lỗi */
 
 /* Trạng thái đăng nhập */
 static BOOL is_logged_in       = FALSE; /* đang có phiên hợp lệ */
@@ -404,6 +405,7 @@ static void tracker_flash_archive_ram(void)
     if (fp == NULL) {
         sAPI_Debug("[NASA] Flash archive: khong mo duoc file, reset RAM tranh lap vo han");
         backup_head = backup_tail = backup_count = 0;
+        flash_ok = FALSE;
         return;
     }
 
@@ -431,7 +433,7 @@ static void tracker_flash_archive_ram(void)
         sAPI_Debug("[NASA] Flash archive: flash loi lien tuc, reset RAM");
         backup_head = backup_tail = backup_count = 0;
     }
-    (void)write_ok;
+    flash_ok = (n > 0 && write_ok) ? TRUE : FALSE;     /* ghi trọn lô thành công mới coi flash tốt */
 }
 
 /**
@@ -1081,27 +1083,47 @@ static int tracker_finish_msg(const char *payload, char *out, size_t out_size)
                     (unsigned long)tracker_checksum((const uint8_t *)payload, (uint32_t)strlen(payload)));
 }
 
-/** Tạo bản tin đăng nhập NASA-1. @return -1 nếu chưa có giờ hợp lệ. */
-static int tracker_build_login(char *out, size_t out_size, uint32_t msg_id)
+/**
+ * ID bản tin là số thứ tự tính từ đầu ngày (giao thức NASA v1.3, mục 2).
+ * So phần ngày "YYYY-MM-DD" của datetime với ngày của bản tin trước đó:
+ * sang ngày mới thì đặt lại msg_id = 1.
+ */
+static void tracker_msg_id_check_new_day(tracker_ctx_t *c, const char *datetime)
+{
+    static char last_day[11] = {0};                        /* "YYYY-MM-DD" của bản tin gần nhất */
+
+    if (c == NULL || datetime == NULL || strlen(datetime) < 10) return;
+    if (last_day[0] != '\0' && strncmp(last_day, datetime, 10) != 0) {
+        sAPI_Debug("[NASA] New day %.10s -> reset msg_id", datetime);
+        c->msg_id = 1;
+    }
+    memcpy(last_day, datetime, 10);
+    last_day[10] = '\0';
+}
+
+/** Tạo bản tin đăng nhập NASA-1 với ID hiện tại của phiên. @return -1 nếu chưa có giờ hợp lệ. */
+static int tracker_build_login(char *out, size_t out_size, tracker_ctx_t *c)
 {
     char datetime[32], imei[32], sim_id[32], payload[224];
-    if (out == NULL || out_size == 0 || !tracker_get_datetime(datetime, sizeof(datetime))) return -1;
+    if (out == NULL || out_size == 0 || c == NULL || !tracker_get_datetime(datetime, sizeof(datetime))) return -1;
 
+    tracker_msg_id_check_new_day(c, datetime);
     tracker_get_imei(imei, sizeof(imei));
     tracker_get_sim_id(sim_id, sizeof(sim_id));
 
     snprintf(payload, sizeof(payload), "!NASA,%d,%lu,%s,%s,%s,%s,%s,%s,%s,%s",
-             NASA_MSG_LOGIN, (unsigned long)msg_id, datetime, imei, sim_id,
+             NASA_MSG_LOGIN, (unsigned long)c->msg_id, datetime, imei, sim_id,
              TRACKER_PLATE_NUMBER, TRACKER_HW_VERSION, TRACKER_FW_VERSION,
              TRACKER_LOGIN_CODE, TRACKER_RESET_REASON);
     return tracker_finish_msg(payload, out, out_size);
 }
 
-/** Tạo trường "status": bit GPS, ACC và BATTERY_OK (điện áp đo được >= TRACKER_BATTERY_OK_MIN_V). */
+/** Tạo trường "status": bit GPS, FLASH_OK, ACC và BATTERY_OK (điện áp đo được >= TRACKER_BATTERY_OK_MIN_V). */
 static int tracker_get_status(BOOL acc_on, BOOL gps_valid, double voltage)
 {
     uint32_t status = 0;
     if (gps_valid) status |= TRACKER_STATUS_BIT_GPS;
+    if (flash_ok)  status |= TRACKER_STATUS_BIT_FLASH_OK;
     if (acc_on)    status |= TRACKER_STATUS_BIT_ACC;
     if (voltage >= TRACKER_BATTERY_OK_MIN_V) status |= TRACKER_STATUS_BIT_BATTERY_OK;
     return (int)status;
@@ -1338,7 +1360,7 @@ static BOOL tracker_login(tracker_ctx_t *c)
     is_logged_in = FALSE;
 
     while (wait_ms < TRACKER_DATETIME_WAIT_TIMEOUT_MS) {
-        len = tracker_build_login(msg, sizeof(msg), c->msg_id);
+        len = tracker_build_login(msg, sizeof(msg), c);
         if (len > 0) break;                                  /* đã có giờ, gói login sẵn sàng */
 
         if (!tried_network_sync && wait_ms >= TRACKER_DATETIME_NETWORK_FALLBACK_MS) {
@@ -1352,12 +1374,15 @@ static BOOL tracker_login(tracker_ctx_t *c)
 
     if (len > 0) {
         sAPI_Debug("[NASA] TX LOGIN: %s", msg);
-        if (tracker_tcp_send_all(c->sockfd, msg, len) == len && tracker_wait_login_ack(c->sockfd)) {
-            is_logged_in       = TRUE;
-            has_logged_in_once = TRUE;
-            led_net_mode       = LED_MODE_ON;
-            sAPI_Debug("[NASA] LOGIN OK - Session Established");
-            return TRUE;
+        if (tracker_tcp_send_all(c->sockfd, msg, len) == len) {
+            c->msg_id++;                                    /* login đã gửi: ID này đã dùng, không cấp lại */
+            if (tracker_wait_login_ack(c->sockfd)) {
+                is_logged_in       = TRUE;
+                has_logged_in_once = TRUE;
+                led_net_mode       = LED_MODE_ON;
+                sAPI_Debug("[NASA] LOGIN OK - Session Established");
+                return TRUE;
+            }
         }
     }
     tracker_tcp_close(&c->sockfd);
@@ -1429,6 +1454,9 @@ static void tracker_run_session(tracker_ctx_t *c)
                 got = tracker_backup_pop(&rec);
             }
             if (got) {
+                char dt_now[32];
+                /* ID theo ngày GỬI (giờ hiện tại), không theo giờ lưu trong bản ghi backup */
+                if (tracker_get_datetime(dt_now, sizeof(dt_now))) tracker_msg_id_check_new_day(c, dt_now);
                 len = tracker_build_backup(msg, sizeof(msg), c->msg_id, &rec, c->odometer_km, c->heading);
                 if (len > 0) {
                     sAPI_Debug("[NASA] TX NASA-7: %s", msg);
@@ -1504,6 +1532,7 @@ static void tracker_run_session(tracker_ctx_t *c)
         tracker_datetime_add_seconds(dt, interval_sec, dt_next, sizeof(dt_next));
 
         voltage = tracker_get_voltage();           /* ADC 80ms: sau khi đã lưu dt và dt_next */
+        tracker_msg_id_check_new_day(c, dt);       /* sang ngày mới → msg_id = 1 */
         len = tracker_build_journey(msg, sizeof(msg), c->msg_id, &loc, last_acc, voltage,
                                     c->odometer_km, c->heading, dt);
         if (len <= 0) { continue; }                /* build lỗi → giữ send_now=TRUE, thử lại vòng sau */
@@ -1534,7 +1563,7 @@ static void sTask_NasaTracker(void *arg)
 
     sAPI_TaskSleep(SEC_TO_TICKS(5));                       /* chờ hệ thống ổn định */
     sAPI_Debug("================================================");
-    sAPI_Debug(" NASA-4G Tracker (Protocol v1.3) Started        ");
+    sAPI_Debug(" NASA-4G Tracker (Protocol v1.3) Started, FW %s", TRACKER_FW_VERSION);
     sAPI_Debug("================================================");
 
     sAPI_NetworkInit();
