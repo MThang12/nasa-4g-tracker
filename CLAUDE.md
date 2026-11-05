@@ -116,13 +116,14 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 - **UART:** tracker không tự cấu hình UART. Callback UART/URC thuộc phần demo (`sc_demo/src/uart_api.c`, `cus_urc.c`).
 - **TCP/IP:** socket lwIP kiểu BSD, blocking. Theo `scfw_socket_define.h`, `SO_SNDTIMEO` chưa được hỗ trợ. Dữ liệu server gửi xuống trong phiên hiện bị bỏ qua.
 - **Thời gian:** `sAPI_TaskSleep(200)` = 1 giây (1 tick = 5 ms).
+- **RTC (`AT+CCLK`):** phải ghi **giờ UTC** kèm hậu tố `+28`. Module tự cộng múi giờ khi trả `AT+CCLK?`, nên đọc ra đúng giờ Việt Nam. **Đã xác minh trên thiết bị ngày 05/11/2026:** bản thử ghi giờ Việt Nam kèm `+28` thì đọc lại bị dư 7 giờ (11:19 thành 18:19). Không đổi `tracker_set_rtc()` sang giờ địa phương.
 
 **Vấn đề đã biết** (từ lần phân tích trước; chưa sửa, chỉ sửa khi được yêu cầu):
-- RTC được ghi giờ UTC nhưng gắn hậu tố `+28`, trong khi nguồn GNSS trả UTC+7. Khi mất GNSS, timestamp có thể lệch 7 giờ.
 - `HAS_DEMO` bật trong firmware sản phẩm.
 - Chưa có watchdog.
 - `flash_read_offset` không được lưu bền, nên sau khi reboot có thể gửi trùng NASA-7.
-- `heading` và `odometer` luôn bằng 0.
+- `odometer` luôn bằng 0.
+- `heading` chỉ có trong NASA-2 (NASA-7 gửi 0 vì bản ghi backup chưa lưu hướng). Ngưỡng cập nhật 3 km/h chưa đủ lọc nhiễu: log 05/11/2026 cho thấy GPS báo tới 15 km/h khi thiết bị đứng yên. Giá trị hướng khi xe chạy thật: **CHƯA XÁC MINH**.
 - Task priority 100/105, trong khi `Doc/software/A76xx_Series_OpenSDK_Q&A.md` khuyến nghị 150–250 (hệ thống dùng < 120).
 
 ## 5. CODING RULES
