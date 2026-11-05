@@ -149,7 +149,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261105"
+#define TRACKER_FW_VERSION               "v1.0.261105c"
 #define TRACKER_LOGIN_CODE               "007507"
 #define TRACKER_RESET_REASON             "R-0.0"
 
@@ -183,6 +183,11 @@
 #define TRACKER_FUEL_RS232               0.0
 #define TRACKER_FUEL_AF                  0.0
 #define TRACKER_TEMPERATURE              0.0
+
+/* --- Hướng chạy (trường 12 của NASA-2) ---
+ * Chỉ cập nhật khi xe chạy từ ngưỡng này trở lên: lúc đứng yên/chạy chậm hướng GNSS dao động mạnh,
+ * khi đó giữ nguyên hướng gần nhất. */
+#define TRACKER_HEADING_MIN_SPEED_KMH    3.0
 
 /* --- Phần cứng GPIO theo sơ đồ RV26 --- */
 #define TRACKER_LED_NET_PIN              32
@@ -251,7 +256,7 @@ typedef struct {
     int      sockfd;        /* socket TCP, -1 khi chưa kết nối */
     uint32_t msg_id;        /* số thứ tự bản tin */
     int      odometer_km;   /* quãng đường (hiện luôn = 0, chưa tính) */
-    double   heading;       /* hướng chạy (hiện luôn = 0, chưa tính) */
+    double   heading;       /* hướng chạy GNSS gần nhất (độ); giữ giá trị cũ khi mất fix / chạy chậm */
 } tracker_ctx_t;
 
 /* Chế độ đèn LED */
@@ -582,7 +587,13 @@ static void tracker_time_to_str(const tracker_time_t *t, char *out, size_t out_s
              t->year, t->mon, t->day, t->hour, t->min, t->sec);
 }
 
-/** Ghi giờ vào RTC của module (AT+CCLK). "+28" = múi giờ +7 giờ (đơn vị 15 phút). */
+/**
+ * Ghi giờ vào RTC của module (AT+CCLK): ghi GIỜ UTC kèm "+28" (28 x 15 phút = +7 giờ).
+ * ĐÃ XÁC MINH bằng log thực tế ngày 05/11/2026 trên module A7677S:
+ *   - Ghi UTC kèm "+28"  -> AT+CCLK? đọc ra đúng giờ Việt Nam.
+ *   - Ghi giờ VN kèm "+28" (bản thử v1.0.261105b) -> đọc ra dư 7 giờ (11:19 thành 18:19).
+ * Tức là module tự cộng múi giờ khi đọc; KHÔNG đổi sang giờ địa phương trước khi ghi.
+ */
 static void tracker_set_rtc(const tracker_time_t *t)
 {
     char cmd[64];
@@ -714,8 +725,7 @@ static BOOL tracker_ntp_query(const struct addrinfo *rp, uint32_t *unix_sec)
 
 /**
  * Lấy giờ từ máy chủ NTP (pool.ntp.org).
- * LƯU Ý: TRACKER_NTP_TZ_HOURS = 0 nên kết quả là giờ UTC, nhưng tracker_set_rtc() ghi kèm
- * hậu tố +28 (UTC+7) -> có thể lệch 7 giờ. Giữ nguyên như bản gốc, cần kiểm tra thực tế.
+ * TRACKER_NTP_TZ_HOURS = 0 nên kết quả là giờ UTC, đúng với tracker_set_rtc() (ghi UTC kèm "+28").
  */
 static BOOL tracker_ntp_get_vietnam_time(tracker_time_t *t)
 {
@@ -906,6 +916,29 @@ static BOOL tracker_get_location(tracker_location_t *out)
         out->speed    = atof(info->speed);
         out->altitude = atof(info->alt);
     }
+    return TRUE;
+}
+
+/**
+ * Đọc hướng chạy (độ, [0, 360)) từ trường course của SC_GNSSINFO.
+ * Copy chuỗi ra bộ đệm riêng trước khi parse vì driver cập nhật struct đồng thời.
+ * Đơn vị của course: CHƯA XÁC MINH trong tài liệu SDK (giả định là độ, như NMEA RMC).
+ * @return FALSE nếu chưa fix, chuỗi rỗng/không phải số hoặc giá trị ngoài [0, 360).
+ */
+static BOOL tracker_get_course(double *deg)
+{
+    SC_GNSSINFO *info = sAPI_GnssNavdataGet();
+    char buf[sizeof(info->course) + 1];
+    char *end = NULL;
+    double v;
+
+    if (deg == NULL || info == NULL || !info->fixValid) return FALSE;
+    memcpy(buf, info->course, sizeof(info->course));
+    buf[sizeof(info->course)] = '\0';
+
+    v = strtod(buf, &end);
+    if (end == buf || v < 0.0 || v >= 360.0) return FALSE;
+    *deg = v;
     return TRUE;
 }
 
@@ -1457,7 +1490,8 @@ static void tracker_run_session(tracker_ctx_t *c)
                 char dt_now[32];
                 /* ID theo ngày GỬI (giờ hiện tại), không theo giờ lưu trong bản ghi backup */
                 if (tracker_get_datetime(dt_now, sizeof(dt_now))) tracker_msg_id_check_new_day(c, dt_now);
-                len = tracker_build_backup(msg, sizeof(msg), c->msg_id, &rec, c->odometer_km, c->heading);
+                /* Bản ghi backup chưa lưu hướng → gửi 0, không gắn hướng hiện tại vào vị trí cũ */
+                len = tracker_build_backup(msg, sizeof(msg), c->msg_id, &rec, c->odometer_km, 0.0);
                 if (len > 0) {
                     sAPI_Debug("[NASA] TX NASA-7: %s", msg);
                     if (tracker_tcp_send_all(c->sockfd, msg, len) != len) {
@@ -1494,6 +1528,13 @@ static void tracker_run_session(tracker_ctx_t *c)
          *     → Timestamp LUÔN cách đều interval_sec, không phụ thuộc GPS granularity 1Hz
          *   - Resync: nếu GPS lệch > 5s so với nominal → cập nhật gốc (time jump) */
         if (!tracker_get_location(&loc)) memset(&loc, 0, sizeof(loc));
+        {
+            double course;
+            /* Hướng chạy: chỉ cập nhật khi có fix và xe chạy đủ nhanh; ngược lại giữ hướng cũ */
+            if (loc.fixValid && loc.speed >= TRACKER_HEADING_MIN_SPEED_KMH && tracker_get_course(&course)) {
+                c->heading = course;
+            }
+        }
 
         {
             char dt_gps[32] = {0};
