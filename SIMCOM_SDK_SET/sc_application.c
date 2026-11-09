@@ -67,6 +67,7 @@
 #include "simcom_gpio.h"
 #include "simcom_file.h"   /* sAPI_fopen/fwrite/fread/fclose - lưu backup xuống flash */
 #include "sc_power.h"      /* sAPI_ReadAdc() */
+#include "simcom_wtd.h"    /* watchdog phần cứng */
 
 #define PROJECT_TRACKER
 
@@ -149,7 +150,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261105c"
+#define TRACKER_FW_VERSION               "v1.0.261105d"
 #define TRACKER_LOGIN_CODE               "007507"
 #define TRACKER_RESET_REASON             "R-0.0"
 
@@ -188,6 +189,15 @@
  * Chỉ cập nhật khi xe chạy từ ngưỡng này trở lên: lúc đứng yên/chạy chậm hướng GNSS dao động mạnh,
  * khi đó giữ nguyên hướng gần nhất. */
 #define TRACKER_HEADING_MIN_SPEED_KMH    3.0
+
+/* --- Watchdog ---
+ * WDT phần cứng (simcom_wtd.h) do task LED cho ăn mỗi 1 s, NHƯNG chỉ khi task tracker còn báo sống
+ * (tracker_alive) trong TRACKER_WDT_STALL_SEC. Tracker treo quá ngưỡng -> ngừng cho ăn -> module tự reset.
+ * Giá trị timeout 0x04 = 16 s theo comment trong sc_demo/src/demo_wtd.c; các giá trị khác CHƯA XÁC MINH.
+ * Ngưỡng 300 s lớn hơn các lệnh chặn lâu nhất (connect() blocking, AT+CFUN, ...) để tránh reset nhầm. */
+#define TRACKER_WDT_TIMEOUT_REG_VALUE    0x04     /* 16 s */
+#define TRACKER_WDT_FEED_PERIOD_TICKS    10       /* 10 x 100 ms = cho ăn mỗi 1 s */
+#define TRACKER_WDT_STALL_SEC            300      /* tracker không báo sống quá ngưỡng này -> để WDT reset */
 
 /* --- Phần cứng GPIO theo sơ đồ RV26 --- */
 #define TRACKER_LED_NET_PIN              32
@@ -285,6 +295,15 @@ static BOOL has_logged_in_once = FALSE; /* đã từng đăng nhập (điều ki
 static volatile tracker_led_mode_t led_net_mode  = LED_MODE_OFF;
 static volatile tracker_led_mode_t led_gnss_mode = LED_MODE_OFF;
 
+/* Bộ đếm "còn sống": chỉ task tracker ghi (tracker_alive), task LED đọc để quyết định cho WDT ăn */
+static volatile uint32_t tracker_alive_counter = 0;
+
+/** Task tracker báo còn sống. Gọi trong mọi vòng lặp/vòng chờ của task tracker. */
+static void tracker_alive(void)
+{
+    tracker_alive_counter++;
+}
+
 /* ===========================================================================
  * 4. TIỆN ÍCH CHUNG (GPIO, AT, checksum, tọa độ)
  * =========================================================================== */
@@ -353,10 +372,34 @@ static void tracker_led_apply(int pin, tracker_led_mode_t mode, int tick)
     sAPI_GpioSetValue(pin, on ? LED_LEVEL_ON : LED_LEVEL_OFF);
 }
 
-/** Task điều khiển LED: PWR sáng cố định, NET/GNSS theo led_net_mode/led_gnss_mode. */
+/**
+ * Bật watchdog phần cứng theo đúng trình tự sc_demo/src/demo_wtd.c:
+ * đặt timeout -> FalutWakeEnable(1) -> SoftWtdEnable(1) -> cho ăn 1 lần để nạp timeout.
+ * @return TRUE nếu mọi bước trả 0.
+ */
+static BOOL tracker_wdt_start(void)
+{
+    int ret;
+    ret  = sAPI_SetWtdTimeOutPeriod(TRACKER_WDT_TIMEOUT_REG_VALUE);
+    ret |= sAPI_FalutWakeEnable(1);
+    ret |= sAPI_SoftWtdEnable(1);
+    ret |= sAPI_FeedWtd();
+    sAPI_Debug("[NASA] WDT start %s (timeout reg=0x%02X, stall=%ds)",
+               (ret == 0) ? "OK" : "FAIL", TRACKER_WDT_TIMEOUT_REG_VALUE, TRACKER_WDT_STALL_SEC);
+    return (ret == 0) ? TRUE : FALSE;
+}
+
+/**
+ * Task điều khiển LED: PWR sáng cố định, NET/GNSS theo led_net_mode/led_gnss_mode.
+ * Kiêm cho WDT ăn mỗi 1 s khi task tracker còn báo sống (xem TRACKER_WDT_STALL_SEC).
+ */
 static void sTask_LedControl(void *arg)
 {
-    int tick_100ms = 0;
+    int      tick_100ms   = 0;
+    BOOL     wdt_on;
+    uint32_t last_alive;
+    int      stall_ticks  = 0;                            /* số tick 100 ms tracker không báo sống */
+    BOOL     stall_logged = FALSE;
     (void)arg;
 
     tracker_gpio_setup(TRACKER_LED_PWR_PIN,  SC_GPIO_OUT_PIN);
@@ -364,10 +407,31 @@ static void sTask_LedControl(void *arg)
     tracker_gpio_setup(TRACKER_LED_GNSS_PIN, SC_GPIO_OUT_PIN);
     sAPI_GpioSetValue(TRACKER_LED_PWR_PIN, LED_LEVEL_ON);
 
+    wdt_on     = tracker_wdt_start();
+    last_alive = tracker_alive_counter;
+
     while (1) {
         tick_100ms++;
         tracker_led_apply(TRACKER_LED_NET_PIN,  led_net_mode,  tick_100ms);
         tracker_led_apply(TRACKER_LED_GNSS_PIN, led_gnss_mode, tick_100ms);
+
+        if (wdt_on) {
+            uint32_t now_alive = tracker_alive_counter;
+            if (now_alive != last_alive) {
+                last_alive = now_alive;
+                stall_ticks = 0;
+                stall_logged = FALSE;
+            } else if (stall_ticks < TRACKER_WDT_STALL_SEC * 10) {
+                stall_ticks++;
+            }
+
+            if (stall_ticks < TRACKER_WDT_STALL_SEC * 10) {
+                if (tick_100ms % TRACKER_WDT_FEED_PERIOD_TICKS == 0) sAPI_FeedWtd();
+            } else if (!stall_logged) {
+                sAPI_Debug("[NASA] WDT: tracker task khong bao song %ds -> ngung cho an, cho reset", TRACKER_WDT_STALL_SEC);
+                stall_logged = TRUE;
+            }
+        }
         sAPI_TaskSleep(20);                               /* 100 ms */
     }
 }
@@ -1247,6 +1311,7 @@ static void tracker_delay(int seconds)
 {
     while (seconds-- > 0) {
         sAPI_TaskSleep(SEC_TO_TICKS(1));
+        tracker_alive();
         tracker_process_backup();
     }
 }
@@ -1295,6 +1360,7 @@ static BOOL tracker_wait_login_ack(int fd)
         ret = select(fd + 1, &rfds, NULL, NULL, &tv);
         if (ret < 0) return FALSE;
 
+        tracker_alive();
         elapsed_ms     += TRACKER_RX_POLL_MS;
         backup_tick_ms += TRACKER_RX_POLL_MS;
         if (backup_tick_ms >= 1000) { tracker_process_backup(); backup_tick_ms = 0; }
@@ -1401,6 +1467,7 @@ static BOOL tracker_login(tracker_ctx_t *c)
             tried_network_sync = TRUE;
         }
         sAPI_TaskSleep(SEC_TO_TICKS(1));
+        tracker_alive();
         wait_ms += 1000;
         tracker_process_backup();
     }
@@ -1458,6 +1525,7 @@ static void tracker_run_session(tracker_ctx_t *c)
          * Nhờ vậy chu kỳ realtime được đo bằng thời gian thực,
          * không bị sai lệch bởi tracker_tcp_send_all / tracker_flash_pop_one. */
         sAPI_TaskSleep(20);                                /* 100 ms */
+        tracker_alive();
         elapsed_ticks += 1 + pending_ticks;                /* 1 tick (100ms sleep) + bù blocking */
         pending_ticks = 0;
 
@@ -1619,6 +1687,7 @@ static void sTask_NasaTracker(void *arg)
     }
 
     while (1) {
+        tracker_alive();
         led_net_mode = LED_MODE_BLINK_FAST;
         tracker_wait_network();
         led_net_mode = LED_MODE_BLINK_SLOW;
