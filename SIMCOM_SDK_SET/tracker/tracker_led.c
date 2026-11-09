@@ -20,6 +20,56 @@ void tracker_alive(void)
 }
 
 /* ===========================================================================
+ * NGUYÊN NHÂN RESET (trường 11 của NASA-1)
+ *   R-2.0: bật nguồn (không có file dấu)     R-1.0: lần trước do watchdog (có file dấu)
+ *   R-0.0: kết nối lại TCP trong cùng lần chạy
+ * Hạn chế: chỉ ghi được dấu khi task LED chủ động ngừng cho ăn (task tracker treo). Nếu cả hệ thống
+ * treo thì không ai ghi dấu -> lần khởi động sau báo R-2.0 (SDK không có API đọc lý do reset).
+ * =========================================================================== */
+
+/* Chỉ task tracker đọc/ghi biến này (init / get / consumed) */
+static const char *reset_reason = TRACKER_RESET_REASON_POWER_ON;
+
+void tracker_reset_reason_init(void)
+{
+    if (sAPI_access(TRACKER_RESET_FLAG_PATH, 0) == 0) {    /* 0 = file tồn tại */
+        reset_reason = TRACKER_RESET_REASON_WATCHDOG;
+        sAPI_remove(TRACKER_RESET_FLAG_PATH);
+    } else {
+        reset_reason = TRACKER_RESET_REASON_POWER_ON;
+    }
+    sAPI_Debug("[NASA] Reset reason: %s", reset_reason);
+}
+
+const char *tracker_reset_reason_get(void)
+{
+    return reset_reason;
+}
+
+void tracker_reset_reason_consumed(void)
+{
+    reset_reason = TRACKER_RESET_REASON_RECONNECT;
+}
+
+/** Ghi file dấu "lần reset sắp tới do watchdog". Gọi từ task LED ngay trước khi ngừng cho ăn. */
+static void tracker_reset_mark_watchdog(void)
+{
+    SCFILE *fp = sAPI_fopen(TRACKER_RESET_FLAG_PATH, "wb");
+    BOOL ok;
+
+    if (fp == NULL) {
+        sAPI_Debug("[NASA] Reset mark: khong mo duoc file");
+        return;
+    }
+    /* sAPI_fwrite trả về số BYTE đã ghi */
+    ok = (sAPI_fwrite(TRACKER_RESET_REASON_WATCHDOG, 1, sizeof(TRACKER_RESET_REASON_WATCHDOG) - 1, fp)
+          == (int)(sizeof(TRACKER_RESET_REASON_WATCHDOG) - 1)) ? TRUE : FALSE;
+    sAPI_fsync(fp);
+    sAPI_fclose(fp);
+    sAPI_Debug("[NASA] Reset mark (watchdog): %s", ok ? "OK" : "FAIL");
+}
+
+/* ===========================================================================
  * 5. ĐÈN LED (task chạy độc lập, chu kỳ 100 ms)
  * =========================================================================== */
 
@@ -63,7 +113,7 @@ void sTask_LedControl(void *arg)
     BOOL     wdt_on;
     uint32_t last_alive;
     int      stall_ticks  = 0;                            /* số tick 100 ms tracker không báo sống */
-    BOOL     stall_logged = FALSE;
+    BOOL     wdt_give_up  = FALSE;                        /* đã quyết định để WDT reset: không cho ăn nữa */
     (void)arg;
 
     tracker_gpio_setup(TRACKER_LED_PWR_PIN,  SC_GPIO_OUT_PIN);
@@ -79,21 +129,21 @@ void sTask_LedControl(void *arg)
         tracker_led_apply(TRACKER_LED_NET_PIN,  led_net_mode,  tick_100ms);
         tracker_led_apply(TRACKER_LED_GNSS_PIN, led_gnss_mode, tick_100ms);
 
-        if (wdt_on) {
+        if (wdt_on && !wdt_give_up) {
             uint32_t now_alive = tracker_alive_counter;
             if (now_alive != last_alive) {
                 last_alive = now_alive;
                 stall_ticks = 0;
-                stall_logged = FALSE;
-            } else if (stall_ticks < TRACKER_WDT_STALL_SEC * 10) {
+            } else {
                 stall_ticks++;
             }
 
             if (stall_ticks < TRACKER_WDT_STALL_SEC * 10) {
                 if (tick_100ms % TRACKER_WDT_FEED_PERIOD_TICKS == 0) sAPI_FeedWtd();
-            } else if (!stall_logged) {
+            } else {
                 sAPI_Debug("[NASA] WDT: tracker task khong bao song %ds -> ngung cho an, cho reset", TRACKER_WDT_STALL_SEC);
-                stall_logged = TRUE;
+                tracker_reset_mark_watchdog();
+                wdt_give_up = TRUE;   /* chốt: không cho ăn lại dù tracker hồi phục, để dấu R-1.0 luôn khớp lần reset */
             }
         }
         sAPI_TaskSleep(20);                               /* 100 ms */

@@ -57,9 +57,17 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261109a"
+#define TRACKER_FW_VERSION               "v1.0.261109b"
 #define TRACKER_LOGIN_CODE               "007507"
-#define TRACKER_RESET_REASON             "R-0.0"
+
+/* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---
+ * Lần login đầu sau khởi động: R-1.0 nếu có file dấu watchdog, ngược lại R-2.0 (bật nguồn).
+ * Các lần login sau trong cùng lần chạy (kết nối lại TCP): R-0.0. R-3.0 hiện chưa dùng. */
+#define TRACKER_RESET_REASON_RECONNECT   "R-0.0"
+#define TRACKER_RESET_REASON_WATCHDOG    "R-1.0"
+#define TRACKER_RESET_REASON_POWER_ON    "R-2.0"
+#define TRACKER_RESET_REASON_SOFT        "R-3.0"
+#define TRACKER_RESET_FLAG_PATH          "C:/nasa_reset.dat"  /* có file = lần reset trước do watchdog */
 
 /* --- Điện áp nguồn xe: đo thật qua ADC của module ---
  * API của SDK A7677S: `unsigned int sAPI_ReadAdc(int channel)` (khai báo trong sc_power.h),

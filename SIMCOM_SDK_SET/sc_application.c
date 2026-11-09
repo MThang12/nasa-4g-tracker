@@ -150,6 +150,7 @@ static BOOL tracker_login(tracker_ctx_t *c)
                 is_logged_in       = TRUE;
                 has_logged_in_once = TRUE;
                 led_net_mode       = LED_MODE_ON;
+                tracker_reset_reason_consumed();            /* các lần login sau trong lần chạy này: R-0.0 */
                 sAPI_Debug("[NASA] LOGIN OK - Session Established");
                 return TRUE;
             }
@@ -345,6 +346,7 @@ static void sTask_NasaTracker(void *arg)
     sAPI_Debug(" NASA-4G Tracker (Protocol v1.3) Started, FW %s", TRACKER_FW_VERSION);
     sAPI_Debug("================================================");
 
+    tracker_reset_reason_init();                           /* R-1.0 nếu lần trước do watchdog, ngược lại R-2.0 */
     sAPI_NetworkInit();
     tracker_gnss_init();
 

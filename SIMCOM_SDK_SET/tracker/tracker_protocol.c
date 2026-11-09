@@ -53,7 +53,7 @@ int tracker_build_login(char *out, size_t out_size, tracker_ctx_t *c)
     snprintf(payload, sizeof(payload), "!NASA,%d,%lu,%s,%s,%s,%s,%s,%s,%s,%s",
              NASA_MSG_LOGIN, (unsigned long)c->msg_id, datetime, imei, sim_id,
              TRACKER_PLATE_NUMBER, TRACKER_HW_VERSION, TRACKER_FW_VERSION,
-             TRACKER_LOGIN_CODE, TRACKER_RESET_REASON);
+             TRACKER_LOGIN_CODE, tracker_reset_reason_get());
     return tracker_finish_msg(payload, out, out_size);
 }
 

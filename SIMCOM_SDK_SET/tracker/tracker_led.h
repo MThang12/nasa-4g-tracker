@@ -19,4 +19,13 @@ void tracker_alive(void);
 /** Task LED + giám sát watchdog (tạo trong userSpace_Main). */
 void sTask_LedControl(void *arg);
 
+/** Gọi 1 lần khi task tracker khởi động: có file dấu watchdog -> R-1.0 (và xóa file), không có -> R-2.0. */
+void tracker_reset_reason_init(void);
+
+/** Nguyên nhân reset để gửi trong NASA-1 ("R-x.x"). */
+const char *tracker_reset_reason_get(void);
+
+/** Gọi sau khi login thành công: các lần login sau trong cùng lần chạy là kết nối lại (R-0.0). */
+void tracker_reset_reason_consumed(void);
+
 #endif /* TRACKER_LED_H */
