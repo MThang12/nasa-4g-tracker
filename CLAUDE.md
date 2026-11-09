@@ -32,7 +32,7 @@ Thông số server, biển số, mã đăng nhập và phiên bản đang hard-c
 | Các biến thể khác trong SDK | `A7677S_LANS/LANV/MANS_1606_V702_OPENSDK` | `kernel/`, `sc_lib/` |
 | CPU | Toolchain biên dịch với `-mcpu=cortex-r4 -mthumb -mfloat-abi=soft` | `config/ToolChain.cmake:17-18`. "Cortex-R5" theo thông tin dự án: **CHƯA XÁC MINH** trong repo |
 | RAM userspace | 256 KB (`ORIGIN 0x7e052000, LENGTH 0x40000`) | `config/A7677S_MANV_1606_V702_OPENSDK_linkscript.ld` |
-| Bản build gần nhất | text ≈ 197 KB, data ≈ 5 KB, bss ≈ 35 KB | `arm-none-eabi-size customer_app.elf` |
+| Bản build gần nhất | text ≈ 55 KB, data ≈ 1.5 KB, bss ≈ 10.5 KB (`v1.0.261109`, đã tắt `HAS_DEMO`). Khi còn demo: text ≈ 197 KB, data ≈ 5 KB, bss ≈ 35 KB | `arm-none-eabi-size customer_app.elf` |
 
 Ngoại vi do firmware sử dụng (lấy từ code; comment ghi "sơ đồ RV26"). **Phần cứng thực tế: CHƯA XÁC MINH.** Repo không có schematic của board.
 
@@ -45,7 +45,7 @@ Ngoại vi do firmware sử dụng (lấy từ code; comment ghi "sơ đồ RV26
 | ACC | GPIO 37 | Input pull-up, mức thấp = ACC bật |
 | Điện áp xe | ADC kênh 1 (`sAPI_ReadAdc(1)`) | Cầu chia R306 220K / R307 10K, hệ số 23. Kênh ADC và đơn vị trả về (mV): **CHƯA XÁC MINH** |
 | Nguồn anten GNSS | `AT+CVAUX=1` | |
-| UART1 | 115200 8N1 | Hiện thuộc menu demo SIMCom (`SIMCOM_UI_DEMO_TO_UART1_PORT`), tracker không dùng |
+| UART1 | 115200 8N1 | Tracker không dùng. Menu demo SIMCom trên UART1 đã bị bỏ từ `v1.0.261109` (tắt `HAS_DEMO`) |
 
 Tài liệu phần cứng trong `Doc/hardware/` là của A7630C/A7670C/A7680C. **Repo không có tài liệu phần cứng riêng cho A7677S.**
 
@@ -81,7 +81,11 @@ Tài liệu API (PDF tiếng Trung) nằm trong `Doc/software/`, ví dụ `A76xx
 
 Cấu hình build hiện tại (`config/.config`, `config/userspaceConfig.h`):
 - `CONFIG_SIMCOM_PROTOCOL_V1=y`, nên build `sc_application.c`.
-- `HAS_DEMO`, `HAS_UART`, `HAS_URC`, `HAS_USB`, `HAS_FS`, `HAS_TCPIP` và nhiều `HAS_DEMO_*` đang **bật**. Toàn bộ `sc_demo` được link và chạy cùng tracker.
+- `CONFIG_HAS_DEMO` **đã tắt** (commit `dbb5477`): `sc_demo` không còn được biên dịch và link (`CMakeLists.txt` `if(HAS_DEMO)`), không còn task demo nào chạy.
+  - `HAS_UART`, `HAS_URC`, `HAS_USB`, `HAS_FS`, `HAS_TCPIP` vẫn được định nghĩa: `config/buildOptions.cmake` bật chúng theo header có trong SDK, không phụ thuộc `CONFIG_HAS_DEMO`.
+  - Các dòng `CONFIG_HAS_DEMO_*` còn trong `.config` nhưng không có tác dụng khi không build `sc_demo`.
+- `config/userspaceConfig.h` được CMake **sinh lại** từ `userspaceConfig.h.in` (`configure_file`) mỗi khi cấu hình đổi. CMake ghi file dạng CRLF nên Git có thể báo thay đổi toàn file dù nội dung không đổi.
+- Cờ trong `.config` đi tới CMake qua `tools/win32/buildConfig` (`Makefile:478`) thành `-DCONFIG_*=ON`, rồi `config/buildOptions.cmake` đổi thành `HAS_*`.
 
 ## 4. FIRMWARE ARCHITECTURE
 
@@ -94,10 +98,11 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 1. `ApiMapInit(arg)`.
 2. `tracker_acc_init()`.
 3. Tạo task `sTask_LedControl` (stack 4 KB, prio 105) và `sTask_NasaTracker` (stack 12 KB, prio 100).
-4. Do `HAS_DEMO` đang bật: sleep 5 s, rồi chạy URC task, USB VCOM, HelloWorld, `sDemo_UartInit()` và `sAPP_SimcomUIDemo()` trên UART1.
+4. `HAS_DEMO` đã tắt nên khối demo (URC task, USB VCOM, HelloWorld, menu UART1) không được biên dịch; hàm trả về ngay sau khi tạo task.
 
 **Task `sTask_LedControl`**
 - Chu kỳ 100 ms. Đọc biến `volatile led_net_mode` / `led_gnss_mode` để nháy LED.
+- Kiêm giám sát watchdog (xem mục Watchdog bên dưới).
 
 **Task `sTask_NasaTracker`**
 - Chờ 5 s → `sAPI_NetworkInit()` → `tracker_gnss_init()` → kiểm tra file backup cũ.
@@ -112,16 +117,24 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 **Các thành phần khác**
 - **Backup:** `tracker_process_backup` được gọi trong mọi vòng chờ. Nó chỉ chạy sau khi đã đăng nhập ít nhất 1 lần và đang mất phiên.
 - **GNSS:** poll `sAPI_GnssNavdataGet()` (trả `SC_GNSSINFO *`, các trường là chuỗi NMEA). Callback `sAPI_GnssStateBindCB` đang để trống. Đơn vị `info->speed` (km/h hay knot): **CHƯA XÁC MINH**, code hiện coi là km/h.
-- **AT:** dùng `sAPI_SendATCMDWaitResp` trên kênh 10. Demo UART cũng dùng kênh 10.
+- **AT:** dùng `sAPI_SendATCMDWaitResp` trên kênh 10 (đồng bộ, không cần task URC).
 - **UART:** tracker không tự cấu hình UART. Callback UART/URC thuộc phần demo (`sc_demo/src/uart_api.c`, `cus_urc.c`).
 - **TCP/IP:** socket lwIP kiểu BSD, blocking. Theo `scfw_socket_define.h`, `SO_SNDTIMEO` chưa được hỗ trợ. Dữ liệu server gửi xuống trong phiên hiện bị bỏ qua.
 - **Thời gian:** `sAPI_TaskSleep(200)` = 1 giây (1 tick = 5 ms).
 - **RTC (`AT+CCLK`):** phải ghi **giờ UTC** kèm hậu tố `+28`. Module tự cộng múi giờ khi trả `AT+CCLK?`, nên đọc ra đúng giờ Việt Nam. **Đã xác minh trên thiết bị ngày 05/11/2026:** bản thử ghi giờ Việt Nam kèm `+28` thì đọc lại bị dư 7 giờ (11:19 thành 18:19). Không đổi `tracker_set_rtc()` sang giờ địa phương.
+- **Watchdog** (commit `dbda0df`): WDT phần cứng bật theo trình tự `sc_demo/src/demo_wtd.c`, timeout reg `0x04` = 16 s (theo comment của demo; các giá trị khác **CHƯA XÁC MINH**).
+  - Task LED cho ăn mỗi 1 s, **chỉ khi** task tracker còn gọi `tracker_alive()` trong vòng `TRACKER_WDT_STALL_SEC` = 300 s. Quá ngưỡng thì ngừng cho ăn và module tự reset sau ≤ 16 s.
+  - Mọi vòng lặp/vòng chờ mới trong task tracker **phải gọi `tracker_alive()`**. Không gọi `sAPI_FeedWtd()` từ task tracker.
+  - 300 s là ngưỡng tự chọn để lớn hơn các lệnh chặn lâu (`connect()`, `AT+CFUN`); thời gian chặn thực tế **CHƯA XÁC MINH**.
+  - Đã chạy liên tục 05–09/11/2026 không có reset ngoài ý muốn.
+- **ID bản tin (`msg_id`):** số thứ tự tính từ đầu ngày theo giao thức; login dùng 1 ID riêng; đặt lại về 1 khi sang ngày mới (`tracker_msg_id_check_new_day`). **Không** đặt lại khi kết nối lại TCP.
+- **Phiên bản firmware:** `TRACKER_FW_VERSION` dạng `v1.0.yyMMdd` (thêm hậu tố `a`, `b`… nếu nạp nhiều bản trong ngày). Đổi phiên bản cho **mỗi bản đem nạp** để nhận biết qua bản tin login.
 
 **Vấn đề đã biết** (từ lần phân tích trước; chưa sửa, chỉ sửa khi được yêu cầu):
-- `HAS_DEMO` bật trong firmware sản phẩm.
-- Chưa có watchdog.
+- Nguyên nhân reset trong NASA-1 luôn là `R-0.0`.
+- `msg_id` không lưu bền: reboot giữa ngày thì ID quay về 1, có thể trùng ID đã gửi trong ngày.
 - `flash_read_offset` không được lưu bền, nên sau khi reboot có thể gửi trùng NASA-7.
+- Giờ trong NASA-2 tính bằng `dt_next` (+10 s mỗi bản) trong khi chu kỳ thực ≈ 10,2 s, nên trôi tới 5 s rồi nhảy (vd 16 s) khi đồng bộ lại theo GPS.
 - `odometer` luôn bằng 0.
 - `heading` chỉ có trong NASA-2 (NASA-7 gửi 0 vì bản ghi backup chưa lưu hướng). Ngưỡng cập nhật 3 km/h chưa đủ lọc nhiễu: log 05/11/2026 cho thấy GPS báo tới 15 km/h khi thiết bị đứng yên. Giá trị hướng khi xe chạy thật: **CHƯA XÁC MINH**.
 - Task priority 100/105, trong khi `Doc/software/A76xx_Series_OpenSDK_Q&A.md` khuyến nghị 150–250 (hệ thống dùng < 120).
@@ -129,14 +142,15 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 ## 5. CODING RULES
 
 - **Chuẩn C:** C99 (`-std=c99 -fgnu89-inline -Os -Wall`), GCC arm-none-eabi 9.2.1.
-  - Code phải biên dịch **không có warning**. `sc_demo` đang bật `-Werror`, và Q&A của SIMCom yêu cầu không để warning.
+  - Code phải biên dịch **không có warning** (Q&A của SIMCom yêu cầu không để warning).
+  - ⚠️ Từ khi tắt `HAS_DEMO`, `sc_application.c` chỉ còn `-Wall`, **không còn `-Werror`** (trước đây kế thừa từ target `sc_demo`). Warning **không làm build thất bại**, nên sau mỗi lần build phải kiểm tra log: số dòng `warning:` phải bằng 0.
   - Không include `unistd.h`: nó gây trùng định nghĩa `close` với `scfw_socket.h` (theo Q&A).
 - **Chỉ dùng API đã xác minh** trong `sc_lib/A7677S_MANV_1606_V702_OPENSDK/inc/*.h`, `sc_lib/inc/` hoặc trong `sc_demo/src/`.
   - Trước khi dùng một API mới, mở header để kiểm tra prototype, kiểu tham số và ý nghĩa giá trị trả về. Nếu có, tham khảo cách demo dùng nó.
   - Không đoán tên API, enum, macro hay kiểu dữ liệu. Nếu không tìm thấy thì báo "CHƯA XÁC MINH" và hỏi lại.
   - Lưu ý đã xác minh: `sAPI_fread` / `sAPI_fwrite` trả về **số byte**, không phải số phần tử (`simcom_file.h`).
 - **RAM / stack:**
-  - Tổng RAM userspace là 256 KB, dùng chung với demo khi `HAS_DEMO` bật.
+  - Tổng RAM userspace là 256 KB. Bản `v1.0.261109` dùng ≈ 12 KB tĩnh (data + bss).
   - Stack task tracker 12 KB, LED 4 KB. Không đặt buffer lớn trên stack. Ước lượng stack khi thêm buffer cục bộ.
   - Sau khi build, kiểm tra `.bss`/`.data` bằng `arm-none-eabi-size` và file `.map`.
 - **Bộ nhớ động:**
@@ -145,9 +159,9 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 - **An toàn chuỗi và buffer:** dùng `snprintf`, luôn giới hạn độ dài, luôn kết thúc chuỗi bằng `\0`, kiểm tra giá trị trả về của `sscanf`.
 - **GNSS:** kiểm tra con trỏ NULL và `fixValid` trước khi dùng tọa độ. Struct navdata do driver cập nhật đồng thời, nên copy ra trước khi parse.
 - **TCP:** luôn kiểm tra giá trị trả về của `send` / `recv` / `select`. Đóng socket khi lỗi. Không để vòng lặp chặn vô hạn.
-- **UART / AT:** kiểm tra mã trả về, giới hạn timeout, đặt kích thước buffer phản hồi đủ lớn. Lưu ý xung đột kênh AT 10 với demo.
+- **UART / AT:** kiểm tra mã trả về, giới hạn timeout, đặt kích thước buffer phản hồi đủ lớn.
 - **Task:**
-  - Mọi vòng `while(1)` phải có `sAPI_TaskSleep`.
+  - Mọi vòng `while(1)` phải có `sAPI_TaskSleep`. Vòng lặp trong task tracker còn phải gọi `tracker_alive()` (watchdog).
   - Biến chia sẻ giữa các task phải là `volatile` hoặc được bảo vệ.
   - Muốn xóa task thì hàm task phải thoát vòng lặp và return trước (Q&A).
 - **File:** gọi `sAPI_fsync` trước `sAPI_fclose` khi cần dữ liệu bền qua mất nguồn. Đóng file ngay sau khi dùng.
@@ -176,6 +190,13 @@ GNUmake.exe A7677S_MANV_1606_V702_OPENSDK          # build app + đóng gói bur
 GNUmake.exe A7677S_MANV_1606_V702_OPENSDK_remake   # clean rồi build lại
 ```
 
+Trên máy build này, shell của Claude Code đặt `NoDefaultCurrentDirectoryInExePath=1`, nên phải gọi kèm `.\` và qua `cmd` (Makefile viết cho `cmd.exe`):
+```powershell
+Set-Location E:\nasa-4g-tracker\SIMCOM_SDK_SET
+cmd /c ".\GNUmake.exe A7677S_MANV_1606_V702_OPENSDK > <log> 2>&1"
+```
+Không dùng `_remake`/`clean`: chúng xóa toàn bộ `out/`.
+
 Chuỗi xử lý: Makefile → CMake sinh `out/<target>/build.ninja` → ninja → `customer_app.elf` → `objcopy -O binary` → `crc_set` → `burn.zip`.
 
 Đầu ra trong `SIMCOM_SDK_SET/out/A7677S_MANV_1606_V702_OPENSDK/`:
@@ -184,15 +205,19 @@ Chuỗi xử lý: Makefile → CMake sinh `out/<target>/build.ninja` → ninja �
 - `burn_factory.zip`
 
 Lưu ý về build:
-- `out/<target>/build.ninja` và `CMakeCache.txt` đang chứa đường dẫn tuyệt đối `E:/22110B01V06A7677MxA_SDK_240721/...`. Build lại mà không tạo lại thư mục `out/<target>` thì có thể biên dịch **nhầm file ở thư mục cũ**. Chỉ xử lý việc này khi được đồng ý.
+- Mỗi lần chạy lệnh build, Makefile **xóa và tạo lại** `out/<target>` (`Makefile:462-463`), nên `build.ninja` mới luôn trỏ đúng repo này. Bản `out/` trong commit cũ chứa đường dẫn `E:/22110B01V06A7677MxA_SDK_240721/...`: **không chạy `ninja` trực tiếp** trên đó.
+- `out/` đang được Git theo dõi: mỗi lần build làm ≈ 237 file trong `out/` hiện là thay đổi. Không commit `out/` nếu không được yêu cầu.
+- Trên máy này có nhiều `burn.zip` ở thư mục SDK cũ; khi nạp phải chọn đúng `E:\nasa-4g-tracker\SIMCOM_SDK_SET\out\A7677S_MANV_1606_V702_OPENSDK\burn.zip` và đối chiếu kích thước.
+- Windows Storage Sense có thể xóa file trong `%TEMP%` (đã mất backup và log build ở đó); lưu log/backup ở nơi khác.
 - Q&A của SIMCom: sau khi đưa SDK lên git, timestamp file thay đổi và có thể kích hoạt sai các bước trong Makefile.
 - `tools/win32/msys64.zip` và `cross_tool.zip` nằm trong `.gitignore`. Trạng thái giải nén trên máy build: **CHƯA XÁC MINH** (hiện có `tools/win32/cross_tool/gcc-arm-none-eabi`).
 
 Kiểm tra sau khi build (khi được phép):
-1. Build không có warning hay error.
-2. `tools/win32/cross_tool/gcc-arm-none-eabi/bin/arm-none-eabi-size.exe out/.../customer_app.elf`: so sánh bss/data với bản trước (≈ 35 KB / 5 KB).
-3. Kiểm tra chuỗi phiên bản trong `.bin` khớp `TRACKER_FW_VERSION`.
-4. Chạy thử trên thiết bị và đọc log `sAPI_Debug` (CATStudio/USB, theo comment trong `sc_main.c`). Quy trình log cụ thể: **CHƯA XÁC MINH**.
+1. Build không có warning hay error (đếm `warning:` trong log, vì không còn `-Werror`).
+2. `tools/win32/cross_tool/gcc-arm-none-eabi/bin/arm-none-eabi-size.exe out/.../customer_app.elf`: so sánh text/data/bss với bản trước (bản `v1.0.261109`: 55159 / 1467 / 10756).
+3. Kiểm tra chuỗi phiên bản trong `.bin` khớp `TRACKER_FW_VERSION`, và `customer_app.bin` bên trong `burn.zip` trùng hash với bản vừa build.
+4. Chạy thử trên thiết bị: kiểm tra bản tin login mang đúng phiên bản và log server.
+5. Log `sAPI_Debug` (`simcom_debug.h`): xuất qua cổng **USB "SimTech HS-USB Diagnostics"**, xem bằng CATStudio (chế độ Generic Target Online, Protocol Diag, Serial, tắt Auto Detection), cần nạp MDB `kernel/A7677S_MANV_1606_V702_OPENSDK/cp_MDB.txt`. Nguồn: `Doc/software/A76xx Series Open SDK_日志抓取指导_V1.00.pdf`. Log in quá sớm khi USB chưa sẵn sàng có thể bị mất (**CHƯA XÁC MINH**).
 
 ## 8. SAFETY RULES
 
