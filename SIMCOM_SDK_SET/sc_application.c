@@ -150,7 +150,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261105d"
+#define TRACKER_FW_VERSION               "v1.0.261109"
 #define TRACKER_LOGIN_CODE               "007507"
 #define TRACKER_RESET_REASON             "R-0.0"
 

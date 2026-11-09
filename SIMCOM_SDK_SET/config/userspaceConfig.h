@@ -11,7 +11,7 @@
 
 
 /* #undef SIMCOM_DEBUG */
-#define HAS_DEMO
+/* #undef HAS_DEMO */
 
 // driver
 #define HAS_DEMO_WTD
