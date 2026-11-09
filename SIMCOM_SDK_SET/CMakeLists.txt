@@ -216,7 +216,18 @@ if(NOT DEFINED MODULE_LIST)
         )
 
         if(CONFIG_SIMCOM_PROTOCOL_V1)
-            SET(app_src sc_application.c)
+            # Firmware tracker NASA-4G: sc_application.c + các module trong tracker/
+            SET(app_src sc_application.c
+                tracker/tracker_util.c
+                tracker/tracker_led.c
+                tracker/tracker_backup.c
+                tracker/tracker_device.c
+                tracker/tracker_time.c
+                tracker/tracker_sensor.c
+                tracker/tracker_net.c
+                tracker/tracker_protocol.c
+            )
+            INCLUDE_DIRECTORIES(./tracker)
         elseif(CONFIG_SIMCOM_PROTOCOL_V2)
             SET(app_src sc_main.c)
             INCLUDE_DIRECTORIES(
@@ -229,7 +240,7 @@ if(NOT DEFINED MODULE_LIST)
         endif()
     endif()
     add_executable(userspace ${app_src} $<TARGET_OBJECTS:third_libs>)
-    target_compile_options(userspace PUBLIC -Wall)
+    target_compile_options(userspace PUBLIC -Wall -Werror)
     set_target_properties(userspace PROPERTIES SUFFIX ".elf")
     set_target_properties(userspace PROPERTIES OUTPUT_NAME ${APP_NAME})
 

@@ -20,7 +20,7 @@ Chức năng hiện có, theo `SIMCOM_SDK_SET/sc_application.c`:
 - Đồng bộ giờ theo thứ tự GNSS → RTC (`AT+CCLK`) → giờ mạng → NTP (`pool.ntp.org`).
 - 3 LED trạng thái: PWR, NET, GNSS.
 
-Thông số server, biển số, mã đăng nhập và phiên bản đang hard-code ở `sc_application.c` (khoảng dòng 110–194).
+Thông số server, biển số, mã đăng nhập, phiên bản và mọi cấu hình `TRACKER_*` đang hard-code ở `SIMCOM_SDK_SET/tracker/tracker_config.h`.
 
 ## 2. HARDWARE PLATFORM
 
@@ -57,7 +57,8 @@ SDK: `22110B01V06A7677MxA_SDK_240721`. Bản build trước đó được tạo 
 SIMCOM_SDK_SET/
 ├── Makefile, GNUmake.exe      Điểm vào build (make → cmake → ninja)
 ├── CMakeLists.txt             Chọn source app, link sc_lib/sc_demo/third libs
-├── sc_application.c           ★ Firmware tracker (được build khi PROTOCOL_V1)
+├── sc_application.c           ★ Firmware tracker: task chính, vòng phiên, userSpace_Main (build khi PROTOCOL_V1)
+├── tracker/                   ★ Các module tracker (tracker_config.h, tracker_common.h, tracker_*.c/.h)
 ├── sc_main.c                  Entry kiểu protocol V2 (không dùng)
 ├── config/                    .config, Kconfig, userspaceConfig.h(.in), linkscript, ToolChain.*
 ├── kernel/<target>/           cp.bin, KernelDefinitions.*, aboot (prebuilt của SIMCom)
@@ -89,7 +90,23 @@ Cấu hình build hiện tại (`config/.config`, `config/userspaceConfig.h`):
 
 ## 4. FIRMWARE ARCHITECTURE
 
-Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có thể lệch sau khi sửa file, nên tìm lại theo tên hàm.
+Từ commit tách module, mã nguồn chia theo tính năng (tìm hàm theo tên, số dòng có thể lệch):
+
+| File (`SIMCOM_SDK_SET/`) | Nội dung |
+|---|---|
+| `tracker/tracker_config.h` | Mọi `#define TRACKER_*`: server, chu kỳ, thiết bị, ADC, GPIO, watchdog, bit trạng thái, `TRACKER_FW_VERSION` |
+| `tracker/tracker_common.h` | Include SDK, kiểu dữ liệu chung (`tracker_location_t`, `backup_record_t`, `tracker_ctx_t`…), `extern is_logged_in` |
+| `tracker/tracker_util.c` | `tracker_at`, `tracker_gpio_setup`, `tracker_checksum`, `tracker_nmea_to_decimal` |
+| `tracker/tracker_led.c` | Task LED, watchdog, `tracker_alive()`, `led_net_mode`/`led_gnss_mode` |
+| `tracker/tracker_backup.c` | Hàng đợi RAM + flash, `tracker_process_backup`, `tracker_delay` |
+| `tracker/tracker_device.c` | IMEI, ICCID |
+| `tracker/tracker_time.c` | Giờ GNSS/RTC/mạng/NTP, `tracker_get_datetime` |
+| `tracker/tracker_sensor.c` | ACC, GNSS, hướng, điện áp ADC |
+| `tracker/tracker_net.c` | SIM, mạng, PDP, TCP, `tracker_wait_network`, `tracker_activate_pdp` |
+| `tracker/tracker_protocol.c` | Đóng gói NASA-1/2/7, `msg_id`, ACK login, `tracker_poll_server` |
+| `sc_application.c` | `tracker_login`, `tracker_run_session`, `sTask_NasaTracker`, `userSpace_Main`, bảng `userSpaceEntry` |
+
+Hàm chỉ dùng trong một file thì giữ `static`; hàm/biến dùng chéo được khai báo trong `tracker_*.h` tương ứng.
 
 **Đăng ký và entry point**
 - `userSpaceEntry` được đặt trong section `.userSpaceRegTable`, stack 10 KB, priority 30 (cuối file). Kernel dùng bảng này để gọi `userSpace_Main(void *arg)`.
@@ -143,7 +160,8 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 
 - **Chuẩn C:** C99 (`-std=c99 -fgnu89-inline -Os -Wall`), GCC arm-none-eabi 9.2.1.
   - Code phải biên dịch **không có warning** (Q&A của SIMCom yêu cầu không để warning).
-  - ⚠️ Từ khi tắt `HAS_DEMO`, `sc_application.c` chỉ còn `-Wall`, **không còn `-Werror`** (trước đây kế thừa từ target `sc_demo`). Warning **không làm build thất bại**, nên sau mỗi lần build phải kiểm tra log: số dòng `warning:` phải bằng 0.
+  - Target `userspace` (sc_application.c + tracker/*.c) được biên dịch với `-Wall -Werror` (`CMakeLists.txt`, `target_compile_options`). Trước đây `-Werror` chỉ có nhờ kế thừa từ `sc_demo`; khi tắt `HAS_DEMO` đã mất và được bật lại trực tiếp. Vẫn kiểm tra log: số dòng `warning:` phải bằng 0.
+  - Hàm `static` không dùng tới sẽ gây warning `-Wunused-function` → build lỗi; xóa hoặc dùng nó.
   - Không include `unistd.h`: nó gây trùng định nghĩa `close` với `scfw_socket.h` (theo Q&A).
 - **Chỉ dùng API đã xác minh** trong `sc_lib/A7677S_MANV_1606_V702_OPENSDK/inc/*.h`, `sc_lib/inc/` hoặc trong `sc_demo/src/`.
   - Trước khi dùng một API mới, mở header để kiểm tra prototype, kiểu tham số và ý nghĩa giá trị trả về. Nếu có, tham khảo cách demo dùng nó.
@@ -170,10 +188,13 @@ Số dòng tham chiếu theo `SIMCOM_SDK_SET/sc_application.c`. Số dòng có t
 
 ## 6. FILE MODIFICATION RULES
 
-- **Giai đoạn đầu chỉ được sửa `SIMCOM_SDK_SET/sc_application.c`.** Đây là file thực sự được build (`CMakeLists.txt`, `SET(app_src sc_application.c)`).
+- **Được sửa:** `SIMCOM_SDK_SET/sc_application.c` và các file `tracker_*.c` / `tracker_*.h` trong `SIMCOM_SDK_SET/tracker/`. Đây là các file được build (`CMakeLists.txt`, `SET(app_src sc_application.c tracker/...)`).
+  - Thêm/xóa/đổi tên file `.c` trong `tracker/` thì phải sửa danh sách `app_src` trong `CMakeLists.txt` → **giải thích và chờ người dùng đồng ý** trước.
+  - Cấu hình mới đặt trong `tracker_config.h`; kiểu dữ liệu dùng chung đặt trong `tracker_common.h`.
 - Bản `sc_application.c` cũ ở thư mục gốc repo (không được build) **đã được người dùng xóa** ngày 04/11/2026 vì là file thừa. Bản này vẫn còn trong commit `bd25f7b` nếu cần tham khảo. Không tạo lại file `sc_application.c` ở thư mục gốc.
 - **Không sửa vendor SDK:** `sc_lib/`, `sc_lib_v2/`, `sc_demo/`, `sc_demo_v2/`, `kernel/`, `public_libs/`, `examples/`, `old_fw_demo/`, `tools/`, `sc_main.c`.
 - **Không sửa build system:** `Makefile`, `CMakeLists.txt`, `old_fw_Makefile`, `makeDepend.mak`, `config/*` (gồm `.config`, `userspaceConfig.h`, linker script `*.ld`, `ToolChain.*`), `out/**/build.ninja`.
+  - Các thay đổi đã được người dùng duyệt: `config/.config` tắt `HAS_DEMO` (commit `dbb5477`); `CMakeLists.txt` thêm `tracker/*.c` vào `app_src`, thêm `INCLUDE_DIRECTORIES(./tracker)` và `-Werror` cho target `userspace` (commit tách module). Thay đổi khác vẫn phải xin duyệt.
 - **Không sửa thư mục output `SIMCOM_SDK_SET/out/`** (gồm `build.ninja`, `rules.ninja`, `CMakeCache.txt`, `.elf`/`.bin`/`.map`, `burn*.zip`). Nội dung `out/` chỉ được thay đổi gián tiếp qua lệnh build đã được người dùng duyệt.
 - Không xóa, đổi tên hay di chuyển file.
 - Nếu cần sửa file khác (ví dụ tắt `HAS_DEMO` trong `config/.config`): **giải thích lý do và chờ người dùng đồng ý** trước.
@@ -213,7 +234,7 @@ Lưu ý về build:
 - `tools/win32/msys64.zip` và `cross_tool.zip` nằm trong `.gitignore`. Trạng thái giải nén trên máy build: **CHƯA XÁC MINH** (hiện có `tools/win32/cross_tool/gcc-arm-none-eabi`).
 
 Kiểm tra sau khi build (khi được phép):
-1. Build không có warning hay error (đếm `warning:` trong log, vì không còn `-Werror`).
+1. Build không có warning hay error (đếm `warning:` trong log; target `userspace` có `-Werror`).
 2. `tools/win32/cross_tool/gcc-arm-none-eabi/bin/arm-none-eabi-size.exe out/.../customer_app.elf`: so sánh text/data/bss với bản trước (bản `v1.0.261109`: 55159 / 1467 / 10756).
 3. Kiểm tra chuỗi phiên bản trong `.bin` khớp `TRACKER_FW_VERSION`, và `customer_app.bin` bên trong `burn.zip` trùng hash với bản vừa build.
 4. Chạy thử trên thiết bị: kiểm tra bản tin login mang đúng phiên bản và log server.
