@@ -97,8 +97,8 @@ Từ commit tách module, mã nguồn chia theo tính năng (tìm hàm theo tên
 | `tracker/tracker_config.h` | Mọi `#define TRACKER_*`: server, chu kỳ, thiết bị, ADC, GPIO, watchdog, bit trạng thái, `TRACKER_FW_VERSION` |
 | `tracker/tracker_common.h` | Include SDK, kiểu dữ liệu chung (`tracker_location_t`, `backup_record_t`, `tracker_ctx_t`…), `extern is_logged_in` |
 | `tracker/tracker_util.c` | `tracker_at`, `tracker_gpio_setup`, `tracker_checksum`, `tracker_nmea_to_decimal` |
-| `tracker/tracker_led.c` | Task LED, watchdog, `tracker_alive()`, `led_net_mode`/`led_gnss_mode` |
-| `tracker/tracker_backup.c` | Hàng đợi RAM + flash, `tracker_process_backup`, `tracker_delay` |
+| `tracker/tracker_led.c` | Task LED, watchdog, `tracker_alive()`, `led_net_mode`/`led_gnss_mode`, nguyên nhân reset (`tracker_reset_reason_*`) |
+| `tracker/tracker_backup.c` | Hàng đợi RAM + flash, `tracker_process_backup`, `tracker_delay`, trạng thái lưu bền (`tracker_backup_startup`, `tracker_state_msg_id_*`) |
 | `tracker/tracker_device.c` | IMEI, ICCID |
 | `tracker/tracker_time.c` | Giờ GNSS/RTC/mạng/NTP, `tracker_get_datetime` |
 | `tracker/tracker_sensor.c` | ACC, GNSS, hướng, điện áp ADC |
@@ -144,13 +144,15 @@ Hàm chỉ dùng trong một file thì giữ `static`; hàm/biến dùng chéo �
   - Mọi vòng lặp/vòng chờ mới trong task tracker **phải gọi `tracker_alive()`**. Không gọi `sAPI_FeedWtd()` từ task tracker.
   - 300 s là ngưỡng tự chọn để lớn hơn các lệnh chặn lâu (`connect()`, `AT+CFUN`); thời gian chặn thực tế **CHƯA XÁC MINH**.
   - Đã chạy liên tục 05–09/11/2026 không có reset ngoài ý muốn.
-- **ID bản tin (`msg_id`):** số thứ tự tính từ đầu ngày theo giao thức; login dùng 1 ID riêng; đặt lại về 1 khi sang ngày mới (`tracker_msg_id_check_new_day`). **Không** đặt lại khi kết nối lại TCP.
+- **ID bản tin (`msg_id`):** số thứ tự tính từ đầu ngày theo giao thức; login dùng 1 ID riêng; đặt lại về 1 khi sang ngày mới (`tracker_msg_id_check_new_day`, gọi ngay trước khi dùng ID cho NASA-1/2/7). **Không** đặt lại khi kết nối lại TCP.
+- **Nguyên nhân reset (trường 11 NASA-1, commit `ba8e4af`):** lần login đầu sau khởi động gửi `R-2.0` (bật nguồn) hoặc `R-1.0` (có file dấu `C:/nasa_reset.dat` do task LED ghi ngay trước khi ngừng cho WDT ăn); sau khi login thành công, các lần login sau trong cùng lần chạy gửi `R-0.0`. Task LED đã ngừng cho ăn thì **chốt** luôn, không cho ăn lại. Đã xác minh trên thiết bị: `R-2.0` khi bật nguồn, `R-0.0` khi kết nối lại; `R-1.0` chưa thử thực tế.
+- **Trạng thái lưu bền (`C:/nasa_state.dat`, `tracker_backup.c`):**
+  - `msg_id`: dành trước khối `TRACKER_MSG_ID_RESERVE_BLOCK` (100) ID, chỉ ghi flash khi dùng hết khối (~86 lần/ngày). Reboot trong cùng ngày tiếp tục từ ID đã dành: không trùng ID, nhưng ID có thể **nhảy tới 100**.
+  - Vị trí đọc file backup: ghi sau mỗi `TRACKER_STATE_OFFSET_SAVE_EVERY` (10) bản NASA-7 lấy từ flash và ngay khi file backup bị xóa. Sau reboot có thể gửi lặp **tối đa 9 bản** NASA-7. Vị trí được kiểm tra hợp lệ với kích thước file trước khi dùng.
 - **Phiên bản firmware:** `TRACKER_FW_VERSION` dạng `v1.0.yyMMdd` (thêm hậu tố `a`, `b`… nếu nạp nhiều bản trong ngày). Đổi phiên bản cho **mỗi bản đem nạp** để nhận biết qua bản tin login.
 
 **Vấn đề đã biết** (từ lần phân tích trước; chưa sửa, chỉ sửa khi được yêu cầu):
-- Nguyên nhân reset trong NASA-1 luôn là `R-0.0`.
-- `msg_id` không lưu bền: reboot giữa ngày thì ID quay về 1, có thể trùng ID đã gửi trong ngày.
-- `flash_read_offset` không được lưu bền, nên sau khi reboot có thể gửi trùng NASA-7.
+- Cả hệ thống treo thì WDT reset mà không ai ghi được file dấu, nên lần khởi động sau báo `R-2.0` thay vì `R-1.0` (SDK không có API đọc lý do reset).
 - Giờ trong NASA-2 tính bằng `dt_next` (+10 s mỗi bản) trong khi chu kỳ thực ≈ 10,2 s, nên trôi tới 5 s rồi nhảy (vd 16 s) khi đồng bộ lại theo GPS.
 - `odometer` luôn bằng 0.
 - `heading` chỉ có trong NASA-2 (NASA-7 gửi 0 vì bản ghi backup chưa lưu hướng). Ngưỡng cập nhật 3 km/h chưa đủ lọc nhiễu: log 05/11/2026 cho thấy GPS báo tới 15 km/h khi thiết bị đứng yên. Giá trị hướng khi xe chạy thật: **CHƯA XÁC MINH**.
