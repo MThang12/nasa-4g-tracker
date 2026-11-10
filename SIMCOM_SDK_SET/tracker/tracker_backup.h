@@ -14,6 +14,18 @@ extern long flash_read_offset; /* vị trí đang đọc dở trong file backup 
 extern BOOL flash_has_data;    /* cache: có file flash chưa gửi? */
 extern BOOL flash_ok;          /* bit 1 trạng thái: FALSE khi lần ghi flash gần nhất bị lỗi */
 
+/**
+ * Gọi 1 lần khi task tracker khởi động: đọc trạng thái lưu bền (TRACKER_STATE_PATH),
+ * phát hiện file backup còn sót và khôi phục vị trí đọc đã gửi.
+ */
+void tracker_backup_startup(void);
+
+/** ID đã dành trước trên flash nếu cùng ngày với datetime ("YYYY-MM-DD ..."), ngược lại 0. */
+uint32_t tracker_state_msg_id_resume(const char *datetime);
+
+/** Gọi trước khi dùng msg_id: hết khối ID đã dành (hoặc sang ngày mới) thì ghi khối mới xuống flash. */
+void tracker_state_msg_id_reserve(const char *datetime, uint32_t msg_id);
+
 /** Lấy bản ghi cũ nhất ra khỏi hàng đợi RAM. @return FALSE nếu hàng đợi rỗng. */
 BOOL tracker_backup_pop(backup_record_t *out);
 

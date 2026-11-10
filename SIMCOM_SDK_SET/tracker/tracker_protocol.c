@@ -26,18 +26,28 @@ static int tracker_finish_msg(const char *payload, char *out, size_t out_size)
  * ID bản tin là số thứ tự tính từ đầu ngày (giao thức NASA v1.3, mục 2).
  * So phần ngày "YYYY-MM-DD" của datetime với ngày của bản tin trước đó:
  * sang ngày mới thì đặt lại msg_id = 1.
+ * Lần đầu có giờ sau khởi động: nếu cùng ngày với ID đã dành trên flash thì tiếp tục từ ID đó.
+ * Gọi ngay trước khi dùng c->msg_id cho một bản tin (NASA-1/2/7).
  */
 void tracker_msg_id_check_new_day(tracker_ctx_t *c, const char *datetime)
 {
     static char last_day[11] = {0};                        /* "YYYY-MM-DD" của bản tin gần nhất */
 
     if (c == NULL || datetime == NULL || strlen(datetime) < 10) return;
-    if (last_day[0] != '\0' && strncmp(last_day, datetime, 10) != 0) {
+    if (last_day[0] == '\0') {
+        /* Lần đầu có giờ sau khởi động: tiếp tục từ ID đã dành trên flash nếu cùng ngày (tránh trùng ID) */
+        uint32_t resume = tracker_state_msg_id_resume(datetime);
+        if (resume > c->msg_id) {
+            sAPI_Debug("[NASA] Resume msg_id %lu (cung ngay %.10s)", (unsigned long)resume, datetime);
+            c->msg_id = resume;
+        }
+    } else if (strncmp(last_day, datetime, 10) != 0) {
         sAPI_Debug("[NASA] New day %.10s -> reset msg_id", datetime);
         c->msg_id = 1;
     }
     memcpy(last_day, datetime, 10);
     last_day[10] = '\0';
+    tracker_state_msg_id_reserve(datetime, c->msg_id);     /* chỉ ghi flash khi hết khối ID đã dành */
 }
 
 /** Tạo bản tin đăng nhập NASA-1 với ID hiện tại của phiên. @return -1 nếu chưa có giờ hợp lệ. */

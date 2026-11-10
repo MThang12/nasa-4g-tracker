@@ -350,13 +350,8 @@ static void sTask_NasaTracker(void *arg)
     sAPI_NetworkInit();
     tracker_gnss_init();
 
-    /* Startup probe: kiểm tra file backup còn sót từ lần reset trước.
-     * sAPI_access() trả 0 nếu file tồn tại. Nếu có → bật cache để gửi lại khi có mạng. */
-    if (sAPI_access(TRACKER_BACKUP_FLASH_PATH, 0) == 0) {
-        flash_has_data    = TRUE;
-        flash_read_offset = 0;
-        sAPI_Debug("[NASA] Startup: phat hien file backup cu tren flash, se gui lai khi co mang");
-    }
+    /* Trạng thái lưu bền (msg_id đã dành, vị trí đọc backup) + file backup còn sót từ lần reset trước */
+    tracker_backup_startup();
 
     while (1) {
         tracker_alive();

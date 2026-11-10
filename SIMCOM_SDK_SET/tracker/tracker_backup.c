@@ -20,6 +20,128 @@ BOOL flash_has_data    = FALSE;  /* cache: có file flash chưa gửi? Chỉ m�
 BOOL flash_ok          = TRUE;   /* bit 1 trạng thái: FALSE khi lần ghi backup xuống flash gần nhất bị lỗi */
 
 /* ===========================================================================
+ * TRẠNG THÁI LƯU BỀN QUA KHỞI ĐỘNG LẠI (TRACKER_STATE_PATH)
+ *   - msg_id: lưu "ID dùng được sau reboot" = ID đang dùng + TRACKER_MSG_ID_RESERVE_BLOCK; chỉ ghi lại
+ *     khi đã dùng hết khối -> reboot trong cùng ngày tiếp tục từ ID này, không trùng ID đã gửi
+ *     (có thể nhảy số tới TRACKER_MSG_ID_RESERVE_BLOCK).
+ *   - flash_read_offset: ghi sau mỗi TRACKER_STATE_OFFSET_SAVE_EVERY bản lấy từ flash, và ngay khi
+ *     file backup bị xóa (offset về 0) -> sau reboot gửi lặp tối đa (SAVE_EVERY - 1) bản NASA-7.
+ * Chỉ task tracker gọi các hàm này.
+ * =========================================================================== */
+#define TRACKER_STATE_MAGIC  0x4E415331UL                 /* "NAS1": nhận diện file hợp lệ */
+
+typedef struct {
+    uint32_t magic;
+    char     day[11];          /* "YYYY-MM-DD" ứng với msg_id_next */
+    uint32_t msg_id_next;      /* ID dùng được sau khởi động lại (đã dành trước) */
+    long     flash_offset;     /* vị trí đã gửi trong file backup */
+} tracker_state_t;
+
+static tracker_state_t state = { TRACKER_STATE_MAGIC, "", 0, 0 };
+static int offset_unsaved = 0;                            /* số bản lấy từ flash chưa ghi vị trí */
+
+/** Ghi toàn bộ trạng thái xuống flash. */
+static void tracker_state_save(void)
+{
+    SCFILE *fp = sAPI_fopen(TRACKER_STATE_PATH, "wb");
+    if (fp == NULL) {
+        sAPI_Debug("[NASA] State: khong mo duoc file de ghi");
+        return;
+    }
+    /* sAPI_fwrite trả về số BYTE đã ghi */
+    if (sAPI_fwrite(&state, sizeof(state), 1, fp) != (int)sizeof(state)) {
+        sAPI_Debug("[NASA] State: ghi loi");
+    }
+    sAPI_fsync(fp);
+    sAPI_fclose(fp);
+}
+
+/** Đọc trạng thái đã lưu (nếu có và hợp lệ). */
+static void tracker_state_load(void)
+{
+    tracker_state_t s;
+    SCFILE *fp = sAPI_fopen(TRACKER_STATE_PATH, "rb");
+
+    if (fp == NULL) {
+        sAPI_Debug("[NASA] State: chua co file trang thai");
+        return;
+    }
+    if (sAPI_fread(&s, sizeof(s), 1, fp) == (int)sizeof(s) && s.magic == TRACKER_STATE_MAGIC) {
+        s.day[sizeof(s.day) - 1] = '\0';
+        state = s;
+        sAPI_Debug("[NASA] State: day=%s msg_id_next=%lu flash_offset=%ld",
+                   state.day, (unsigned long)state.msg_id_next, state.flash_offset);
+    } else {
+        sAPI_Debug("[NASA] State: file trang thai loi, bo qua");
+    }
+    sAPI_fclose(fp);
+}
+
+/** Vị trí đọc đã lưu, nếu còn hợp lệ với file backup hiện tại (không vượt kích thước, đúng biên bản ghi). */
+static long tracker_state_flash_offset_resume(void)
+{
+    SCFILE *fp;
+    int size;
+    long off = state.flash_offset;
+
+    if (off <= 0) return 0;
+    fp = sAPI_fopen(TRACKER_BACKUP_FLASH_PATH, "rb");
+    if (fp == NULL) return 0;
+    size = sAPI_fsize(fp);
+    sAPI_fclose(fp);
+
+    if (off > (long)size || off % (long)sizeof(backup_record_t) != 0) {
+        sAPI_Debug("[NASA] State: offset %ld khong hop le (size=%d) -> doc tu dau", off, size);
+        return 0;
+    }
+    return off;
+}
+
+/** Ghi vị trí đọc file backup: ngay (force) hoặc sau mỗi TRACKER_STATE_OFFSET_SAVE_EVERY lần đọc. */
+static void tracker_state_offset_note(BOOL force)
+{
+    if (!force && ++offset_unsaved < TRACKER_STATE_OFFSET_SAVE_EVERY) return;
+    offset_unsaved = 0;
+    if (state.flash_offset == flash_read_offset) return;
+    state.flash_offset = flash_read_offset;
+    tracker_state_save();
+}
+
+uint32_t tracker_state_msg_id_resume(const char *datetime)
+{
+    if (datetime == NULL || state.day[0] == '\0' || strncmp(state.day, datetime, 10) != 0) return 0;
+    return state.msg_id_next;
+}
+
+void tracker_state_msg_id_reserve(const char *datetime, uint32_t msg_id)
+{
+    if (datetime == NULL || strlen(datetime) < 10) return;
+    if (strncmp(state.day, datetime, 10) == 0 && msg_id < state.msg_id_next) return;  /* còn trong khối đã dành */
+
+    memcpy(state.day, datetime, 10);
+    state.day[10] = '\0';
+    state.msg_id_next = msg_id + TRACKER_MSG_ID_RESERVE_BLOCK;
+    tracker_state_save();
+}
+
+void tracker_backup_startup(void)
+{
+    tracker_state_load();
+
+    /* Startup probe: kiểm tra file backup còn sót từ lần reset trước.
+     * sAPI_access() trả 0 nếu file tồn tại. Nếu có → bật cache để gửi lại khi có mạng. */
+    if (sAPI_access(TRACKER_BACKUP_FLASH_PATH, 0) == 0) {
+        flash_has_data    = TRUE;
+        flash_read_offset = tracker_state_flash_offset_resume();
+        sAPI_Debug("[NASA] Startup: phat hien file backup cu tren flash (offset=%ld), se gui lai khi co mang",
+                   flash_read_offset);
+    } else if (state.flash_offset != 0) {
+        state.flash_offset = 0;                           /* không còn file: vị trí cũ không còn ý nghĩa */
+        tracker_state_save();
+    }
+}
+
+/* ===========================================================================
  * 6. HÀNG ĐỢI BACKUP (bộ đệm vòng RAM + archive xuống flash khi đầy)
  * =========================================================================== */
 
@@ -105,6 +227,7 @@ BOOL tracker_flash_has_backup(void)
         /* File bị xóa bên ngoài hoặc lỗi flash → reset cache */
         flash_has_data = FALSE;
         flash_read_offset = 0;
+        tracker_state_offset_note(TRUE);
         return FALSE;
     }
     size = sAPI_fsize(fp);
@@ -114,6 +237,7 @@ BOOL tracker_flash_has_backup(void)
         sAPI_remove(TRACKER_BACKUP_FLASH_PATH);
         flash_read_offset = 0;
         flash_has_data = FALSE;
+        tracker_state_offset_note(TRUE);
         sAPI_Debug("[NASA] Flash: đã gửi hết, xóa file");
         return FALSE;
     }
@@ -129,6 +253,7 @@ BOOL tracker_flash_pop_one(backup_record_t *out)
     if (fp == NULL) {
         flash_has_data = FALSE;
         flash_read_offset = 0;
+        tracker_state_offset_note(TRUE);
         return FALSE;
     }
     if (sAPI_fseek(fp, flash_read_offset, FS_SEEK_BEGIN) == 0 &&
@@ -136,6 +261,7 @@ BOOL tracker_flash_pop_one(backup_record_t *out)
         /* Đọc được 1 bản ghi (sizeof bytes) → tiến con trỏ */
         flash_read_offset += (long)sizeof(*out);
         sAPI_fclose(fp);
+        tracker_state_offset_note(FALSE);                 /* ghi flash sau mỗi TRACKER_STATE_OFFSET_SAVE_EVERY bản */
         return TRUE;
     }
     /* Đọc lỗi hoặc hết file: dọn sạch */
@@ -143,6 +269,7 @@ BOOL tracker_flash_pop_one(backup_record_t *out)
     sAPI_remove(TRACKER_BACKUP_FLASH_PATH);
     flash_read_offset = 0;
     flash_has_data = FALSE;
+    tracker_state_offset_note(TRUE);
     sAPI_Debug("[NASA] Flash pop: doc loi, xoa file");
     return FALSE;
 }

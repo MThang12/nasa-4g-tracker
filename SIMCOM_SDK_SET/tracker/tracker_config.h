@@ -39,6 +39,13 @@
  * mount file system trước (xem sAPI_NorFlashMountLfs trong demo_exfs.c của SDK). */
 #define TRACKER_BACKUP_FLASH_PATH        "C:/nasa_backup.dat"
 
+/* --- Trạng thái lưu bền qua khởi động lại (tracker_backup.c) ---
+ * msg_id: dành trước một khối ID, chỉ ghi flash khi dùng hết khối -> không trùng ID sau reboot trong ngày.
+ * Vị trí đọc file backup: ghi sau mỗi TRACKER_STATE_OFFSET_SAVE_EVERY bản NASA-7 lấy từ flash. */
+#define TRACKER_STATE_PATH               "C:/nasa_state.dat"
+#define TRACKER_MSG_ID_RESERVE_BLOCK     100      /* ~17 phút ở chu kỳ 10 s -> ~86 lần ghi/ngày */
+#define TRACKER_STATE_OFFSET_SAVE_EVERY  10       /* sau reboot gửi lặp tối đa 9 bản NASA-7 */
+
 /* --- Kích thước bộ đệm --- */
 #define TRACKER_LOGIN_BUF_SIZE           256
 #define TRACKER_JOURNEY_BUF_SIZE         384
@@ -57,7 +64,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261109b"
+#define TRACKER_FW_VERSION               "v1.0.261109c"
 #define TRACKER_LOGIN_CODE               "007507"
 
 /* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---
