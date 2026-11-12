@@ -168,7 +168,8 @@ static BOOL tracker_login(tracker_ctx_t *c)
  *     (2) Nếu còn backup → gửi 1 bản NASA-7 rồi RƠI XUỐNG kiểm tra realtime.
  *     (3) Nếu đến chu kỳ (ACC ON 10 s / OFF 300 s) → gửi NASA-2 ngay,
  *         dù còn bao nhiêu bản NASA-7 đang chờ.
- *   Tick 100 ms tăng đều đầu mỗi vòng → chu kỳ realtime không bị trễ bởi backup.
+ *   Chu kỳ NASA-2 đo bằng đồng hồ hệ thống sAPI_GetTicks() (mốc due_tick), không đếm số vòng lặp,
+ *   nên không bị lệch khi vòng lặp bận gửi NASA-7 hay chờ I/O.
  */
 static void tracker_run_session(tracker_ctx_t *c)
 {
@@ -179,8 +180,8 @@ static void tracker_run_session(tracker_ctx_t *c)
     char dt_next[32];                                      /* timestamp danh nghĩa của bản tin kế tiếp */
     double voltage;
     int len, interval_sec;
-    int  elapsed_ticks = 0;                                /* số tick 100ms đã trôi qua kể từ lần gửi NASA-2 gần nhất */
-    int  pending_ticks = 0;                                /* tích lũy tick từ blocking I/O để bù vào elapsed_ticks */
+    UINT32 due_tick = 0;                                   /* mốc sAPI_GetTicks() mà NASA-2 kế tiếp đến hạn */
+    BOOL reschedule = TRUE;                                /* lần gửi tới tính lại mốc từ "bây giờ" (đầu phiên / ACC đổi) */
     int  send_count = 0;                                   /* đếm số bản tin NASA-2 đã gửi trong phiên */
     BOOL send_now = TRUE;
     BOOL last_acc = tracker_get_acc_status();
@@ -191,14 +192,8 @@ static void tracker_run_session(tracker_ctx_t *c)
 
     while (c->sockfd >= 0 && is_logged_in) {
 
-        /* Tick 100 ms — nghỉ đúng 100ms, sau đó cộng dồn pending_ticks
-         * (thời gian blocking I/O từ vòng trước) vào elapsed_ticks.
-         * Nhờ vậy chu kỳ realtime được đo bằng thời gian thực,
-         * không bị sai lệch bởi tracker_tcp_send_all / tracker_flash_pop_one. */
         sAPI_TaskSleep(20);                                /* 100 ms */
         tracker_alive();
-        elapsed_ticks += 1 + pending_ticks;                /* 1 tick (100ms sleep) + bù blocking */
-        pending_ticks = 0;
 
         /* (1) Phiên còn sống? */
         if (!tracker_poll_server(c->sockfd, 0)) {
@@ -212,16 +207,11 @@ static void tracker_run_session(tracker_ctx_t *c)
 
         /* (2) Gửi 1 bản NASA-7 nếu còn backup (flash trước vì cũ hơn, RAM sau).
          * KHÔNG dùng continue → vòng lặp vẫn rơi xuống kiểm tra NASA-2 cùng vòng này.
-         * Nhờ vậy realtime luôn gửi đúng chu kỳ, NASA-7 được xả xen kẽ từng bản 1.
-         *
-         * tracker_flash_pop_one / tracker_tcp_send_all là blocking I/O (~100-300ms).
-         * Sau khi gửi xong, cộng thêm 2 tick (~200ms) vào pending_ticks để bù vào
-         * elapsed_ticks ở đầu vòng sau, tránh đánh giá thấp thời gian đã trôi qua. */
+         * Nhờ vậy realtime luôn gửi đúng chu kỳ, NASA-7 được xả xen kẽ từng bản 1. */
         if (flash_has_data || backup_count > 0) {
             BOOL got;
             if (flash_has_data && tracker_flash_has_backup()) {
                 got = tracker_flash_pop_one(&rec);         /* ưu tiên flash: cũ hơn → gửi trước */
-                pending_ticks += 2;                        /* bù ~200ms mở/đọc file flash */
             } else {
                 got = tracker_backup_pop(&rec);
             }
@@ -239,21 +229,19 @@ static void tracker_run_session(tracker_ctx_t *c)
                         return;
                     }
                     c->msg_id++;
-                    pending_ticks += 1;                    /* bù ~100ms gửi TCP */
                 }
             }
             /* Rơi xuống bước (3) để kiểm tra ngay xem NASA-2 có đến hạn không */
         }
 
-        /* (3a) Đếm thời gian bằng elapsed_ticks (tính cả thời gian blocking I/O từ pending_ticks).
-         * Gửi NASA-2 khi đến hạn hoặc ACC đổi trạng thái.                          */
+        /* (3a) Gửi NASA-2 khi đồng hồ hệ thống tới mốc due_tick, hoặc ngay khi ACC đổi trạng thái. */
         if (!send_now) {
             BOOL acc = tracker_get_acc_status();
-            interval_sec = acc ? TRACKER_RUN_INTERVAL_SEC : TRACKER_STOP_INTERVAL_SEC;
             if (acc != last_acc) {
                 sAPI_Debug("[NASA] ACC changed %d -> %d, sending immediately", last_acc, acc);
                 send_now = TRUE;
-            } else if (elapsed_ticks >= interval_sec * 10) {
+                reschedule = TRUE;                         /* chu kỳ đổi (10 s <-> 300 s): tính lại mốc từ lần gửi này */
+            } else if ((int32_t)(sAPI_GetTicks() - due_tick) >= 0) {
                 send_now = TRUE;
             }
         }
@@ -325,9 +313,20 @@ static void tracker_run_session(tracker_ctx_t *c)
         }
         c->msg_id++;
         send_count++;
-        send_now      = FALSE;
-        elapsed_ticks = 0;                         /* reset đồng hồ realtime sau mỗi lần gửi NASA-2 */
-        pending_ticks = 0;
+        send_now = FALSE;
+
+        /* Mốc NASA-2 kế tiếp: lịch cố định "mốc cũ + chu kỳ" để trễ không cộng dồn.
+         * Đầu phiên, khi ACC đổi, hoặc đã trễ quá 1 chu kỳ thì tính lại từ thời điểm vừa gửi. */
+        {
+            UINT32 now_tick = sAPI_GetTicks();
+            UINT32 period   = (UINT32)interval_sec * TICKS_PER_SEC;
+            if (reschedule || (int32_t)(now_tick - due_tick) >= (int32_t)period) {
+                due_tick = now_tick + period;
+            } else {
+                due_tick += period;
+            }
+            reschedule = FALSE;
+        }
     }
 }
 
