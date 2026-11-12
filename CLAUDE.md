@@ -13,9 +13,12 @@ Chức năng hiện có, theo `SIMCOM_SDK_SET/sc_application.c`:
 - Đọc vị trí GNSS (GPS + BDS + QZSS, tốc độ cập nhật 1 Hz), trạng thái ACC (khóa xe), CSQ, điện áp nguồn xe qua ADC.
 - Kết nối TCP tới server và chạy giao thức **NASA v1.3**:
   - `!NASA,<type>,<msg_id>,<fields...>*<checksum>\r\n`, trong đó checksum là tổng giá trị byte của phần đứng trước `*`.
-  - NASA-1: đăng nhập. NASA-2: hành trình realtime. NASA-7: gửi bù dữ liệu backup.
-- Chu kỳ gửi NASA-2: ACC bật thì 10 s/lần, ACC tắt thì 300 s/lần. Gửi ngay khi ACC đổi trạng thái.
-- Khi mất kết nối: lưu tối đa 100 bản ghi trong RAM. RAM đầy thì ghi cả lô xuống `C:/nasa_backup.dat`. Có mạng lại thì gửi bù bằng NASA-7.
+  - NASA-1: đăng nhập. NASA-2: hành trình realtime. NASA-7: gửi bù dữ liệu backup. NASA-3 đã bỏ (12/11/2026, bản patch lưu ngoài repo ở `E:\nasa-4g-backup\nasa3_v1.0.261112a.patch`).
+  - Server hiện tại: `tcp.rovigps.vn:2598` (`TRACKER_SERVER_HOST/PORT`).
+- Chu kỳ gửi NASA-2: ACC bật thì 10 s/lần, ACC tắt thì 300 s/lần. Gửi ngay khi ACC đổi trạng thái. Hẹn giờ theo `sAPI_GetTicks()` với mốc `due_tick` cố định (commit `196bfa0`), không đếm vòng lặp, không gửi dồn bù.
+- Khi mất kết nối: lưu backup theo ACC (bật 20 s/bản, tắt 300 s/bản, ACC đổi trạng thái thì lưu ngay; `TRACKER_BACKUP_ACC_ON_SEC/OFF_SEC`). RAM giữ tối đa 100 bản; cứ đủ `TRACKER_BACKUP_FLUSH_EVERY` (10) bản thì ghi cả lô xuống `C:/nasa_backup.dat`, nên mất nguồn chỉ mất < 10 bản. Có mạng lại thì gửi bù bằng NASA-7.
+  - Flash `C:/` (log khởi động 11/11/2026): tổng 446464 B, trống ≈ 258048 B. Mỗi bản ghi backup ≈ 88 B → đủ ≈ 16 giờ mất mạng khi ACC bật.
+- **Lệnh cấu hình** (bảng `Config Command NASA-4G latest.xlsx` ở thư mục gốc, file chưa commit): nhận qua TCP (server gửi chữ trần, mỗi lệnh 1 dòng) và qua SMS, dùng chung `tracker_cmd_execute()`. Đọc `sa,<mã>`, ghi `na,<mã>,<nội dung>`. Đã có mã 29 và 38 (chi tiết ở mục 4); mã khác bị bỏ qua, không phản hồi.
 - Tự phục hồi: reset RF (`AT+CFUN=0/1`) khi không đăng ký được mạng, tự kết nối lại TCP.
 - Đồng bộ giờ theo thứ tự GNSS → RTC (`AT+CCLK`) → giờ mạng → NTP (`pool.ntp.org`).
 - 3 LED trạng thái: PWR, NET, GNSS.
@@ -32,14 +35,14 @@ Thông số server, biển số, mã đăng nhập, phiên bản và mọi cấu
 | Các biến thể khác trong SDK | `A7677S_LANS/LANV/MANS_1606_V702_OPENSDK` | `kernel/`, `sc_lib/` |
 | CPU | Toolchain biên dịch với `-mcpu=cortex-r4 -mthumb -mfloat-abi=soft` | `config/ToolChain.cmake:17-18`. "Cortex-R5" theo thông tin dự án: **CHƯA XÁC MINH** trong repo |
 | RAM userspace | 256 KB (`ORIGIN 0x7e052000, LENGTH 0x40000`) | `config/A7677S_MANV_1606_V702_OPENSDK_linkscript.ld` |
-| Bản build gần nhất | text ≈ 55 KB, data ≈ 1.5 KB, bss ≈ 10.5 KB (`v1.0.261109`, đã tắt `HAS_DEMO`). Khi còn demo: text ≈ 197 KB, data ≈ 5 KB, bss ≈ 35 KB | `arm-none-eabi-size customer_app.elf` |
+| Bản build gần nhất | text 62417 / data 1505 / bss 12242 B (`v1.0.261112d`). Bản `v1.0.261109` (vừa tắt `HAS_DEMO`): 55159 / 1467 / 10756. Khi còn demo: text ≈ 197 KB, data ≈ 5 KB, bss ≈ 35 KB | `arm-none-eabi-size customer_app.elf` |
 
 Ngoại vi do firmware sử dụng (lấy từ code; comment ghi "sơ đồ RV26"). **Phần cứng thực tế: CHƯA XÁC MINH.** Repo không có schematic của board.
 
 | Chức năng | Chân / kênh | Ghi chú |
 |---|---|---|
 | LED NET | GPIO 32 | Output, mức 1 = sáng |
-| LED PWR | GPIO 80 | Output |
+| LED PWR | GPIO 80 | Output. Sáng = hoạt động, nháy chậm = đã tắt bằng lệnh 38 |
 | LED GNSS | GPIO 74 | Output |
 | DOUT | GPIO 73 | Đã khai báo, chưa dùng |
 | ACC | GPIO 37 | Input pull-up, mức thấp = ACC bật |
@@ -97,14 +100,15 @@ Từ commit tách module, mã nguồn chia theo tính năng (tìm hàm theo tên
 | `tracker/tracker_config.h` | Mọi `#define TRACKER_*`: server, chu kỳ, thiết bị, ADC, GPIO, watchdog, bit trạng thái, `TRACKER_FW_VERSION` |
 | `tracker/tracker_common.h` | Include SDK, kiểu dữ liệu chung (`tracker_location_t`, `backup_record_t`, `tracker_ctx_t`…), `extern is_logged_in` |
 | `tracker/tracker_util.c` | `tracker_at`, `tracker_gpio_setup`, `tracker_checksum`, `tracker_nmea_to_decimal` |
-| `tracker/tracker_led.c` | Task LED, watchdog, `tracker_alive()`, `led_net_mode`/`led_gnss_mode`, nguyên nhân reset (`tracker_reset_reason_*`) |
-| `tracker/tracker_backup.c` | Hàng đợi RAM + flash, `tracker_process_backup`, `tracker_delay`, trạng thái lưu bền (`tracker_backup_startup`, `tracker_state_msg_id_*`) |
+| `tracker/tracker_led.c` | Task LED, watchdog, `tracker_alive()`, `led_pwr_mode`/`led_net_mode`/`led_gnss_mode`, nguyên nhân reset (`tracker_reset_reason_*`) |
+| `tracker/tracker_backup.c` | Hàng đợi RAM + flash, `tracker_process_backup`, `tracker_delay`, trạng thái lưu bền (`tracker_backup_startup`, `tracker_state_msg_id_*`), cờ lệnh 38 `device_enabled` / `tracker_device_set_enabled` |
 | `tracker/tracker_device.c` | IMEI, ICCID |
 | `tracker/tracker_time.c` | Giờ GNSS/RTC/mạng/NTP, `tracker_get_datetime` |
-| `tracker/tracker_sensor.c` | ACC, GNSS, hướng, điện áp ADC |
+| `tracker/tracker_sensor.c` | ACC, GNSS (`tracker_gnss_init`, `tracker_gnss_power_off`), hướng, điện áp ADC |
 | `tracker/tracker_net.c` | SIM, mạng, PDP, TCP, `tracker_wait_network`, `tracker_activate_pdp` |
-| `tracker/tracker_protocol.c` | Đóng gói NASA-1/2/7, `msg_id`, ACK login, `tracker_poll_server` |
-| `sc_application.c` | `tracker_login`, `tracker_run_session`, `sTask_NasaTracker`, `userSpace_Main`, bảng `userSpaceEntry` |
+| `tracker/tracker_protocol.c` | Đóng gói NASA-1/2/7, `msg_id`, ACK login, `tracker_poll_server` (gom dòng lệnh từ server), lệnh cấu hình `tracker_cmd_execute` (sa,29; na/sa,38) |
+| `tracker/tracker_sms.c` | Nhận lệnh cấu hình qua SMS, giải mã PDU, gửi SMS phản hồi (`tracker_sms_init`, `tracker_sms_poll`) |
+| `sc_application.c` | `tracker_login`, `tracker_run_session`, `tracker_device_off_wait`, `sTask_NasaTracker`, `userSpace_Main`, bảng `userSpaceEntry` |
 
 Hàm chỉ dùng trong một file thì giữ `static`; hàm/biến dùng chéo được khai báo trong `tracker_*.h` tương ứng.
 
@@ -118,25 +122,38 @@ Hàm chỉ dùng trong một file thì giữ `static`; hàm/biến dùng chéo �
 4. `HAS_DEMO` đã tắt nên khối demo (URC task, USB VCOM, HelloWorld, menu UART1) không được biên dịch; hàm trả về ngay sau khi tạo task.
 
 **Task `sTask_LedControl`**
-- Chu kỳ 100 ms. Đọc biến `volatile led_net_mode` / `led_gnss_mode` để nháy LED.
+- Chu kỳ 100 ms. Đọc biến `volatile led_pwr_mode` / `led_net_mode` / `led_gnss_mode` để nháy LED.
 - Kiêm giám sát watchdog (xem mục Watchdog bên dưới).
 
 **Task `sTask_NasaTracker`**
-- Chờ 5 s → `sAPI_NetworkInit()` → `tracker_gnss_init()` → kiểm tra file backup cũ.
+- Chờ 5 s → `sAPI_NetworkInit()` → `tracker_gnss_init()` → `tracker_sms_init()` → `tracker_backup_startup()` (trạng thái lưu bền, file backup cũ, trạng thái lệnh 38).
 - Vòng lặp vô hạn:
+  0. Nếu `device_enabled == FALSE` (lệnh 38): `tracker_device_off_wait()` rồi quay lại đầu vòng.
   1. `tracker_wait_network`: CPIN, CEREG/CGREG; lỗi 15 lần thì CFUN=0/1.
   2. `tracker_activate_pdp`: `sAPI_TcpipPdpActive(1, 1)`.
   3. `tracker_tcp_connect`: `getaddrinfo` / `socket` / `connect` (blocking).
   4. `tracker_login`: chờ có giờ, gửi NASA-1, chờ ACK 15 s bằng `select`.
-  5. `tracker_run_session`: vòng 100 ms gồm poll socket → theo dõi GNSS → gửi 1 bản NASA-7 → NASA-2 khi đến hạn.
+  5. `tracker_run_session`: vòng 100 ms gồm poll socket (kèm xử lý lệnh từ server) → theo dõi GNSS → poll SMS → thoát nếu lệnh 38 tắt → gửi 1 bản NASA-7 → NASA-2 khi đến hạn.
   6. Mất kết nối thì `tracker_delay(5)` rồi lặp lại.
 
 **Các thành phần khác**
-- **Backup:** `tracker_process_backup` được gọi trong mọi vòng chờ. Nó chỉ chạy sau khi đã đăng nhập ít nhất 1 lần và đang mất phiên.
+- **Backup:** `tracker_process_backup` được gọi trong mọi vòng chờ. Nó chỉ chạy sau khi đã đăng nhập ít nhất 1 lần, đang mất phiên và thiết bị không bị tắt bằng lệnh 38.
 - **GNSS:** poll `sAPI_GnssNavdataGet()` (trả `SC_GNSSINFO *`, các trường là chuỗi NMEA). Callback `sAPI_GnssStateBindCB` đang để trống. Đơn vị `info->speed` (km/h hay knot): **CHƯA XÁC MINH**, code hiện coi là km/h.
+  - Thời gian bắt GPS (đo 12/11/2026, ngoài trời): tắt/bật nguồn → dưới 1 phút. Lần chạy đầu ngay sau khi nạp firmware mất ≈ 10 phút; giả thuyết là nạp firmware làm mất dữ liệu vệ tinh đã lưu (**CHƯA XÁC MINH**). Chưa dùng AGPS; SDK có `sAPI_GnssAgpsSeviceOpen()` (`simcom_gps.h`, `demo_gps.c`) nếu cần rút ngắn.
 - **AT:** dùng `sAPI_SendATCMDWaitResp` trên kênh 10 (đồng bộ, không cần task URC).
 - **UART:** tracker không tự cấu hình UART. Callback UART/URC thuộc phần demo (`sc_demo/src/uart_api.c`, `cus_urc.c`).
-- **TCP/IP:** socket lwIP kiểu BSD, blocking. Theo `scfw_socket_define.h`, `SO_SNDTIMEO` chưa được hỗ trợ. Dữ liệu server gửi xuống trong phiên hiện bị bỏ qua.
+- **TCP/IP:** socket lwIP kiểu BSD, blocking. Theo `scfw_socket_define.h`, `SO_SNDTIMEO` chưa được hỗ trợ. Dữ liệu server gửi xuống được gom theo dòng (`\r`/`\n`) trong `tracker_poll_server`; dòng `sa,`/`na,` được chạy như lệnh cấu hình và phản hồi kèm `\r\n`, dòng khác chỉ ghi log `[NASA] RX:`.
+- **Lệnh cấu hình (`tracker_cmd_execute`, `tracker_protocol.c`):** trả về độ dài phản hồi, 0 = không phản hồi. Phản hồi nhiều dòng nối bằng `\n`.
+  - `sa,29`: 6 dòng `NASA4G,<imei>,<fw>,<hw>,<khóa 0>,<số ngày chạy>,<giờ khởi động DDMMYYhhmmss>` / `GSM,<0/1>,<csq>` / `GPS,<0 OK/1 lỗi/2 ngủ>,<fix>,<số vệ tinh>` / `SV,<host>,<port>,<0/1>` / `PW,<0 normal/1 sleeping>,<điện áp>` / `TI,<ddmmyy>-<hh:mm:ss>`. Số ngày chạy và giờ khởi động tính từ `sAPI_GetTicks()` của lần chạy hiện tại; chức năng khóa chưa có nên luôn 0.
+  - `na,38,0` / `na,38,1` / `sa,38`: tắt/mở thiết bị. Phản hồi `thiet bi ngung hoat dong` / `thiet bi hoat dong tro lai` / `trang thai thiet bi: <0/1>`; giá trị khác → `loi tham so`.
+  - Khi tắt (`tracker_device_off_wait`): phản hồi gửi trước, rồi đóng TCP, ngừng NASA và backup, tắt GNSS (`sAPI_GnssPowerStatusSet(OFF)`, `AT+CVAUX` giữ nguyên), LED NET/GNSS tắt, LED PWR nháy chậm. Mạng di động và SMS vẫn chạy để mở lại bằng SMS `na,38,1`. Trạng thái lưu ở `C:/nasa_power.dat` (1 byte `'0'`/`'1'`, không có file = mở), giữ qua mất nguồn. Đã xác minh trên thiết bị 12/11/2026.
+  - Chế độ ngủ tiết kiệm điện thật của module (`sAPI_SystemSleepSet`, `simcom_system.h`) chưa dùng; ảnh hưởng tới SMS/watchdog/log USB **CHƯA XÁC MINH**.
+- **SMS (`tracker_sms.c`):**
+  - `sAPI_UrcRefRegister(q, SC_URC_SMS_MASK)`; khi `getSmsReady()` thì `sAPI_SmsSetNewMsgInd(1,1,2,0,0,0)` → SMS mới đến qua URC `SC_URC_FLASH_MSG` (bên nhận `free(arg3)`).
+  - Thiết bị thực tế báo dạng **PDU**: `+CMT: "",<độ dài TPDU><PDU hex>` (log không thấy xuống dòng giữa độ dài và PDU) → giải mã bằng `sAPI_SmsDecodePdu()`. Vẫn hỗ trợ dạng text.
+  - Phản hồi bằng `sAPI_SmsSendLongMsg()`, chờ kết quả tối đa 30 s (có `tracker_alive()`). Cùng 1 số chỉ được phản hồi 1 lần / 60 s (`TRACKER_SMS_REPLY_MIN_SEC`): lệnh vẫn chạy nhưng không gửi SMS trả lời.
+  - `tracker_sms_poll()` không chặn, được gọi trong vòng phiên, `tracker_login`, chờ ACK, `tracker_delay` và vòng chờ khi tắt.
+  - Mỗi SMS có lúc được báo 2 lần (nguyên nhân **CHƯA XÁC MINH**).
 - **Thời gian:** `sAPI_TaskSleep(200)` = 1 giây (1 tick = 5 ms).
 - **RTC (`AT+CCLK`):** phải ghi **giờ UTC** kèm hậu tố `+28`. Module tự cộng múi giờ khi trả `AT+CCLK?`, nên đọc ra đúng giờ Việt Nam. **Đã xác minh trên thiết bị ngày 05/11/2026:** bản thử ghi giờ Việt Nam kèm `+28` thì đọc lại bị dư 7 giờ (11:19 thành 18:19). Không đổi `tracker_set_rtc()` sang giờ địa phương.
 - **Watchdog** (commit `dbda0df`): WDT phần cứng bật theo trình tự `sc_demo/src/demo_wtd.c`, timeout reg `0x04` = 16 s (theo comment của demo; các giá trị khác **CHƯA XÁC MINH**).
@@ -196,7 +213,7 @@ Hàm chỉ dùng trong một file thì giữ `static`; hàm/biến dùng chéo �
 - Bản `sc_application.c` cũ ở thư mục gốc repo (không được build) **đã được người dùng xóa** ngày 04/11/2026 vì là file thừa. Bản này vẫn còn trong commit `bd25f7b` nếu cần tham khảo. Không tạo lại file `sc_application.c` ở thư mục gốc.
 - **Không sửa vendor SDK:** `sc_lib/`, `sc_lib_v2/`, `sc_demo/`, `sc_demo_v2/`, `kernel/`, `public_libs/`, `examples/`, `old_fw_demo/`, `tools/`, `sc_main.c`.
 - **Không sửa build system:** `Makefile`, `CMakeLists.txt`, `old_fw_Makefile`, `makeDepend.mak`, `config/*` (gồm `.config`, `userspaceConfig.h`, linker script `*.ld`, `ToolChain.*`), `out/**/build.ninja`.
-  - Các thay đổi đã được người dùng duyệt: `config/.config` tắt `HAS_DEMO` (commit `dbb5477`); `CMakeLists.txt` thêm `tracker/*.c` vào `app_src`, thêm `INCLUDE_DIRECTORIES(./tracker)` và `-Werror` cho target `userspace` (commit tách module). Thay đổi khác vẫn phải xin duyệt.
+  - Các thay đổi đã được người dùng duyệt: `config/.config` tắt `HAS_DEMO` (commit `dbb5477`); `CMakeLists.txt` thêm `tracker/*.c` vào `app_src`, thêm `INCLUDE_DIRECTORIES(./tracker)` và `-Werror` cho target `userspace` (commit tách module); thêm `tracker/tracker_sms.c` vào `app_src` (commit `daa025b`). Thay đổi khác vẫn phải xin duyệt.
 - **Không sửa thư mục output `SIMCOM_SDK_SET/out/`** (gồm `build.ninja`, `rules.ninja`, `CMakeCache.txt`, `.elf`/`.bin`/`.map`, `burn*.zip`). Nội dung `out/` chỉ được thay đổi gián tiếp qua lệnh build đã được người dùng duyệt.
 - Không xóa, đổi tên hay di chuyển file.
 - Nếu cần sửa file khác (ví dụ tắt `HAS_DEMO` trong `config/.config`): **giải thích lý do và chờ người dùng đồng ý** trước.
@@ -237,7 +254,9 @@ Lưu ý về build:
 
 Kiểm tra sau khi build (khi được phép):
 1. Build không có warning hay error (đếm `warning:` trong log; target `userspace` có `-Werror`).
-2. `tools/win32/cross_tool/gcc-arm-none-eabi/bin/arm-none-eabi-size.exe out/.../customer_app.elf`: so sánh text/data/bss với bản trước (bản `v1.0.261109`: 55159 / 1467 / 10756).
+2. `tools/win32/cross_tool/gcc-arm-none-eabi/bin/arm-none-eabi-size.exe out/.../customer_app.elf`: so sánh text/data/bss với bản trước (bản `v1.0.261112d`: 62417 / 1505 / 12242).
+   - `-Wformat-truncation` (bật bởi `-Wall`, thành lỗi do `-Werror`) báo khi `snprintf("%s")` copy từ mảng lớn sang mảng nhỏ hơn; dùng hàm copy có giới hạn (như `tracker_copy_str` trong `tracker_sms.c`).
+   - Sau khi build, nếu `git diff --ignore-cr-at-eol -- config/userspaceConfig.h` rỗng thì đổi file về LF để Git không báo thay đổi.
 3. Kiểm tra chuỗi phiên bản trong `.bin` khớp `TRACKER_FW_VERSION`, và `customer_app.bin` bên trong `burn.zip` trùng hash với bản vừa build.
 4. Chạy thử trên thiết bị: kiểm tra bản tin login mang đúng phiên bản và log server.
 5. Log `sAPI_Debug` (`simcom_debug.h`): xuất qua cổng **USB "SimTech HS-USB Diagnostics"**, xem bằng CATStudio (chế độ Generic Target Online, Protocol Diag, Serial, tắt Auto Detection), cần nạp MDB `kernel/A7677S_MANV_1606_V702_OPENSDK/cp_MDB.txt`. Nguồn: `Doc/software/A76xx Series Open SDK_日志抓取指导_V1.00.pdf`. Log in quá sớm khi USB chưa sẵn sàng có thể bị mất (**CHƯA XÁC MINH**).
@@ -245,6 +264,8 @@ Kiểm tra sau khi build (khi được phép):
 ## 8. SAFETY RULES
 
 - **Không chạy** `git reset`, `git clean`, `git push`, `git checkout -- <file>` hay bất kỳ lệnh git mang tính phá hủy nào.
+  - `git push` chỉ chạy khi người dùng yêu cầu rõ trong lần đó (ví dụ 12/11/2026: push `main` lên `origin`, gộp commit xóa file từ GitHub bằng merge, không rebase/force).
+- Không commit `out/` và các file tài liệu chưa theo dõi ở thư mục gốc (`NASA4G_Protocol Manual v1.3.docx`, `Config Command NASA-4G latest.xlsx`, `~$...xlsx`).
 - Không tự xóa hoặc ghi đè file. Trước khi ghi một file, phải đọc nó.
 - Không tự thay đổi cấu hình phần cứng: chân GPIO, kênh ADC, hệ số chia áp, `AT+CFUN`/`CVAUX`, chế độ GNSS, cấu hình UART.
 - Không tự build, nạp firmware hay chạy công cụ trong `tools/` khi chưa được yêu cầu.
