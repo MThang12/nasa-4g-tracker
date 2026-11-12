@@ -9,6 +9,7 @@
 /* Chế độ LED do task chính ghi, task LED đọc (volatile vì dùng chung giữa 2 task) */
 volatile tracker_led_mode_t led_net_mode  = LED_MODE_OFF;
 volatile tracker_led_mode_t led_gnss_mode = LED_MODE_OFF;
+volatile tracker_led_mode_t led_pwr_mode  = LED_MODE_ON;
 
 /* Bộ đếm "còn sống": chỉ task tracker ghi (tracker_alive), task LED đọc để quyết định cho WDT ăn */
 static volatile uint32_t tracker_alive_counter = 0;
@@ -104,7 +105,7 @@ static BOOL tracker_wdt_start(void)
 }
 
 /**
- * Task điều khiển LED: PWR sáng cố định, NET/GNSS theo led_net_mode/led_gnss_mode.
+ * Task điều khiển LED: PWR/NET/GNSS theo led_pwr_mode/led_net_mode/led_gnss_mode.
  * Kiêm cho WDT ăn mỗi 1 s khi task tracker còn báo sống (xem TRACKER_WDT_STALL_SEC).
  */
 void sTask_LedControl(void *arg)
@@ -126,6 +127,7 @@ void sTask_LedControl(void *arg)
 
     while (1) {
         tick_100ms++;
+        tracker_led_apply(TRACKER_LED_PWR_PIN,  led_pwr_mode,  tick_100ms);
         tracker_led_apply(TRACKER_LED_NET_PIN,  led_net_mode,  tick_100ms);
         tracker_led_apply(TRACKER_LED_GNSS_PIN, led_gnss_mode, tick_100ms);
 

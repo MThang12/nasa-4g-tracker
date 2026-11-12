@@ -14,8 +14,15 @@ extern long flash_read_offset; /* vị trí đang đọc dở trong file backup 
 extern BOOL flash_has_data;    /* cache: có file flash chưa gửi? */
 extern BOOL flash_ok;          /* bit 1 trạng thái: FALSE khi lần ghi flash gần nhất bị lỗi */
 
+/* Lệnh 38: TRUE = thiết bị hoạt động, FALSE = tắt (ngừng server/GPS/backup, chỉ nhận SMS).
+ * Chỉ task tracker ghi (qua tracker_device_set_enabled). */
+extern volatile BOOL device_enabled;
+
+/** Lệnh 38: đặt trạng thái tắt/mở và lưu xuống TRACKER_DEVICE_STATE_PATH. @return FALSE nếu ghi file lỗi. */
+BOOL tracker_device_set_enabled(BOOL enabled);
+
 /**
- * Gọi 1 lần khi task tracker khởi động: đọc trạng thái lưu bền (TRACKER_STATE_PATH),
+ * Gọi 1 lần khi task tracker khởi động: đọc trạng thái lưu bền (TRACKER_STATE_PATH, TRACKER_DEVICE_STATE_PATH),
  * phát hiện file backup còn sót và khôi phục vị trí đọc đã gửi.
  */
 void tracker_backup_startup(void);

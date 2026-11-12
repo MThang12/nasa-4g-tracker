@@ -15,8 +15,8 @@
  * =========================================================================== */
 
 /* --- Server và mạng --- */
-#define TRACKER_SERVER_HOST              "103.57.209.16"
-#define TRACKER_SERVER_PORT              2590
+#define TRACKER_SERVER_HOST              "tcp.rovigps.vn"   /* tên miền: phân giải bằng getaddrinfo() trong tracker_tcp_connect */
+#define TRACKER_SERVER_PORT              2598
 #define TRACKER_PDP_ID                   1
 
 /* --- Chu kỳ gửi hành trình (giây) --- */
@@ -49,6 +49,15 @@
 #define TRACKER_MSG_ID_RESERVE_BLOCK     100      /* ~17 phút ở chu kỳ 10 s -> ~86 lần ghi/ngày */
 #define TRACKER_STATE_OFFSET_SAVE_EVERY  10       /* sau reboot gửi lặp tối đa 9 bản NASA-7 */
 
+/* --- Lệnh 38 tắt/mở thiết bị: lưu trạng thái qua khởi động lại (1 byte '0'/'1'; không có file = mở) --- */
+#define TRACKER_DEVICE_STATE_PATH        "C:/nasa_power.dat"
+
+/* --- Lệnh cấu hình qua SMS (tracker_sms.c) --- */
+#define TRACKER_SMS_QUEUE_DEPTH          8        /* số URC/kết quả SMS chờ xử lý */
+#define TRACKER_SMS_SEND_TIMEOUT_SEC     30       /* chờ kết quả gửi SMS phản hồi */
+#define TRACKER_SMS_REPLY_MIN_SEC        60       /* cùng 1 số: tối đa 1 phản hồi / 60 s (chống tốn tiền) */
+#define TRACKER_SMS_BODY_SIZE            200      /* độ dài tối đa nội dung lệnh nhận qua SMS */
+
 /* --- Kích thước bộ đệm --- */
 #define TRACKER_LOGIN_BUF_SIZE           256
 #define TRACKER_JOURNEY_BUF_SIZE         384
@@ -67,7 +76,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261111b"
+#define TRACKER_FW_VERSION               "v1.0.261112d"
 #define TRACKER_LOGIN_CODE               "007507"
 
 /* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---

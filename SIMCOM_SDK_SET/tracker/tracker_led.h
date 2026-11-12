@@ -12,6 +12,7 @@
 /* Chế độ LED do task tracker ghi, task LED đọc (volatile vì dùng chung giữa 2 task) */
 extern volatile tracker_led_mode_t led_net_mode;
 extern volatile tracker_led_mode_t led_gnss_mode;
+extern volatile tracker_led_mode_t led_pwr_mode;   /* sáng = hoạt động, nháy chậm = tắt bằng lệnh 38 */
 
 /** Task tracker báo còn sống. Gọi trong mọi vòng lặp/vòng chờ của task tracker. */
 void tracker_alive(void);

@@ -7,6 +7,7 @@
 #include "tracker_led.h"
 #include "tracker_time.h"
 #include "tracker_sensor.h"
+#include "tracker_sms.h"
 
 /* Hàng đợi backup (RAM): bộ đệm vòng ~8.8 KB, đầy thì archive toàn bộ xuống flash.
  * Giữ nhỏ (100 bản) để tránh tràn RAM userspace của module (~64 KB tổng). */
@@ -18,6 +19,7 @@ static uint32_t last_backup_time = 0;   /* giây trong ngày của lần backup 
 long flash_read_offset = 0;      /* vị trí đang đọc dở trong file backup trên flash */
 BOOL flash_has_data    = FALSE;  /* cache: có file flash chưa gửi? Chỉ mở file khi cần thực sự */
 BOOL flash_ok          = TRUE;   /* bit 1 trạng thái: FALSE khi lần ghi backup xuống flash gần nhất bị lỗi */
+volatile BOOL device_enabled = TRUE;  /* lệnh 38: FALSE = thiết bị tắt */
 
 /* ===========================================================================
  * TRẠNG THÁI LƯU BỀN QUA KHỞI ĐỘNG LẠI (TRACKER_STATE_PATH)
@@ -124,6 +126,43 @@ void tracker_state_msg_id_reserve(const char *datetime, uint32_t msg_id)
     tracker_state_save();
 }
 
+/* ===========================================================================
+ * LỆNH 38: TRẠNG THÁI TẮT/MỞ THIẾT BỊ (TRACKER_DEVICE_STATE_PATH, 1 byte '0'/'1')
+ * Không có file hoặc file lỗi -> coi là mở (mặc định 1 theo bảng lệnh).
+ * =========================================================================== */
+
+/** Đọc trạng thái tắt/mở đã lưu. */
+static void tracker_device_state_load(void)
+{
+    char c = '1';
+    SCFILE *fp = sAPI_fopen(TRACKER_DEVICE_STATE_PATH, "rb");
+
+    if (fp == NULL) return;                               /* chưa từng cấu hình: mở */
+    if (sAPI_fread(&c, 1, 1, fp) == 1 && c == '0') device_enabled = FALSE;
+    sAPI_fclose(fp);
+    sAPI_Debug("[NASA] Device state: %s", device_enabled ? "ON" : "OFF (lenh 38)");
+}
+
+BOOL tracker_device_set_enabled(BOOL enabled)
+{
+    char c = enabled ? '1' : '0';
+    BOOL ok;
+    SCFILE *fp;
+
+    device_enabled = enabled;
+    fp = sAPI_fopen(TRACKER_DEVICE_STATE_PATH, "wb");
+    if (fp == NULL) {
+        sAPI_Debug("[NASA] Device state: khong mo duoc file de ghi");
+        return FALSE;
+    }
+    /* sAPI_fwrite trả về số BYTE đã ghi */
+    ok = (sAPI_fwrite(&c, 1, 1, fp) == 1) ? TRUE : FALSE;
+    sAPI_fsync(fp);
+    sAPI_fclose(fp);
+    sAPI_Debug("[NASA] Device state -> %s, luu %s", enabled ? "ON" : "OFF", ok ? "OK" : "FAIL");
+    return ok;
+}
+
 void tracker_backup_startup(void)
 {
     /* Log dung lượng ổ C:/ (LittleFS) 1 lần khi khởi động, để đánh giá độ mòn flash.
@@ -138,6 +177,7 @@ void tracker_backup_startup(void)
     }
 
     tracker_state_load();
+    tracker_device_state_load();
 
     /* Startup probe: kiểm tra file backup còn sót từ lần reset trước.
      * sAPI_access() trả 0 nếu file tồn tại. Nếu có → bật cache để gửi lại khi có mạng. */
@@ -334,7 +374,7 @@ void tracker_process_backup(void)
     BOOL acc_on;
     const char *reason;
 
-    if (is_logged_in || !has_logged_in_once) return;
+    if (is_logged_in || !has_logged_in_once || !device_enabled) return;   /* thiết bị tắt (lệnh 38): không lưu */
     now = tracker_get_seconds_today();
     if (now == 0) return;
 
@@ -365,5 +405,6 @@ void tracker_delay(int seconds)
         sAPI_TaskSleep(SEC_TO_TICKS(1));
         tracker_alive();
         tracker_process_backup();
+        tracker_sms_poll();                                /* lệnh cấu hình qua SMS, kể cả khi mất kết nối server */
     }
 }

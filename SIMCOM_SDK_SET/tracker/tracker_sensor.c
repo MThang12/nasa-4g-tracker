@@ -41,6 +41,14 @@ void tracker_gnss_init(void)
     sAPI_GnssStartMode(SC_GNSS_START_HOT);
 }
 
+/** Tắt nguồn GNSS (lệnh 38). AT+CVAUX giữ nguyên. Bật lại bằng tracker_gnss_init(). */
+void tracker_gnss_power_off(void)
+{
+    SC_Gnss_Return_Code ret = sAPI_GnssPowerStatusSet(SC_GNSS_POWER_OFF);
+    led_gnss_mode = LED_MODE_OFF;
+    sAPI_Debug("[NASA] GNSS power off ret=%d", (int)ret);
+}
+
 /**
  * Đọc vị trí hiện tại. Số vệ tinh luôn được cập nhật; tọa độ/tốc độ/độ cao chỉ lấy
  * khi đã fix, còn không thì để 0 (tránh dính tọa độ cũ trong bộ đệm).

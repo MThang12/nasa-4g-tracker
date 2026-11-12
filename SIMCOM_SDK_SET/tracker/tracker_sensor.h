@@ -16,6 +16,9 @@ BOOL tracker_get_acc_status(void);
 /** Bật nguồn GNSS, chọn GPS+BDS+QZSS, cập nhật 1 Hz, khởi động nóng. */
 void tracker_gnss_init(void);
 
+/** Tắt nguồn GNSS (lệnh 38), LED GNSS tắt. Bật lại bằng tracker_gnss_init(). */
+void tracker_gnss_power_off(void);
+
 /** Đọc vị trí hiện tại (tọa độ chỉ có khi đã fix). @return FALSE nếu SDK không trả dữ liệu. */
 BOOL tracker_get_location(tracker_location_t *out);
 

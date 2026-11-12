@@ -38,7 +38,8 @@
  *   tracker_time.c      giờ GNSS / RTC / mạng / NTP
  *   tracker_sensor.c    ACC, GNSS, hướng, điện áp ADC
  *   tracker_net.c       SIM, mạng, PDP, TCP
- *   tracker_protocol.c  đóng gói NASA-1/2/7, msg_id, ACK, giám sát phiên
+ *   tracker_protocol.c  đóng gói NASA-1/2/7, msg_id, ACK, giám sát phiên, lệnh cấu hình (sa,29)
+ *   tracker_sms.c       nhận lệnh cấu hình qua SMS, gửi phản hồi
  *   sc_application.c    (file này) task tracker, vòng phiên làm việc, điểm vào userSpace_Main
  *
  * ĐỊNH DẠNG BẢN TIN
@@ -64,6 +65,7 @@
 #include "tracker_sensor.h"
 #include "tracker_net.h"
 #include "tracker_protocol.h"
+#include "tracker_sms.h"
 
 #define PROJECT_TRACKER
 
@@ -140,9 +142,10 @@ static BOOL tracker_login(tracker_ctx_t *c)
         tracker_alive();
         wait_ms += 1000;
         tracker_process_backup();
+        tracker_sms_poll();
     }
 
-    if (len > 0) {
+    if (len > 0 && device_enabled) {                       /* lệnh 38 tắt trong lúc chờ: không đăng nhập */
         sAPI_Debug("[NASA] TX LOGIN: %s", msg);
         if (tracker_tcp_send_all(c->sockfd, msg, len) == len) {
             c->msg_id++;                                    /* login đã gửi: ID này đã dùng, không cấp lại */
@@ -204,6 +207,16 @@ static void tracker_run_session(tracker_ctx_t *c)
 
         /* (1b) Theo dõi GPS mỗi vòng (~100 ms): LED + log, không phụ thuộc chu kỳ gửi */
         tracker_monitor_gnss(&last_fix);
+
+        /* (1c) Lệnh cấu hình qua SMS (đọc hàng đợi URC không chặn) */
+        tracker_sms_poll();
+
+        /* (1d) Lệnh 38 tắt thiết bị (qua TCP hoặc SMS, phản hồi đã gửi xong): đóng phiên, vòng chính sẽ ngủ */
+        if (!device_enabled) {
+            sAPI_Debug("[NASA] Lenh 38: tat thiet bi -> dong phien");
+            tracker_drop_session(c);
+            return;
+        }
 
         /* (2) Gửi 1 bản NASA-7 nếu còn backup (flash trước vì cũ hơn, RAM sau).
          * KHÔNG dùng continue → vòng lặp vẫn rơi xuống kiểm tra NASA-2 cùng vòng này.
@@ -331,6 +344,31 @@ static void tracker_run_session(tracker_ctx_t *c)
 }
 
 /**
+ * Lệnh 38 tắt thiết bị: đóng TCP, tắt GPS, LED NET/GNSS tắt, LED PWR nháy chậm.
+ * Chỉ còn nhận SMS (để mở lại bằng na,38,1); không lưu backup. Mạng di động giữ nguyên.
+ * Chờ đến khi được mở lại thì bật GPS, LED PWR sáng, trả về để vòng chính kết nối server.
+ */
+static void tracker_device_off_wait(tracker_ctx_t *c)
+{
+    tracker_tcp_close(&c->sockfd);
+    is_logged_in = FALSE;
+    tracker_gnss_power_off();
+    led_net_mode = LED_MODE_OFF;
+    led_pwr_mode = LED_MODE_BLINK_SLOW;
+    sAPI_Debug("[NASA] Device OFF (lenh 38): ngung server/GPS/backup, chi nhan SMS");
+
+    while (!device_enabled) {
+        sAPI_TaskSleep(SEC_TO_TICKS(1));
+        tracker_alive();
+        tracker_sms_poll();
+    }
+
+    sAPI_Debug("[NASA] Device ON (lenh 38): bat lai GPS, ket noi server");
+    led_pwr_mode = LED_MODE_ON;
+    tracker_gnss_init();
+}
+
+/**
  * Task chính: khởi tạo mạng + GNSS rồi lặp vô hạn
  *   chờ mạng -> PDP -> TCP -> login -> phiên làm việc -> (mất kết nối) đợi 5 s -> lặp lại.
  * LED NET: nháy nhanh = chưa có mạng, nháy chậm = có mạng nhưng chưa login, sáng = đã login.
@@ -348,17 +386,23 @@ static void sTask_NasaTracker(void *arg)
     tracker_reset_reason_init();                           /* R-1.0 nếu lần trước do watchdog, ngược lại R-2.0 */
     sAPI_NetworkInit();
     tracker_gnss_init();
+    tracker_sms_init();                                    /* nhận lệnh cấu hình qua SMS */
 
     /* Trạng thái lưu bền (msg_id đã dành, vị trí đọc backup) + file backup còn sót từ lần reset trước */
     tracker_backup_startup();
 
     while (1) {
         tracker_alive();
+        if (!device_enabled) {                             /* lệnh 38 (hoặc trạng thái lưu từ trước khi reset) */
+            tracker_device_off_wait(&ctx);
+            continue;
+        }
         led_net_mode = LED_MODE_BLINK_FAST;
         tracker_wait_network();
         led_net_mode = LED_MODE_BLINK_SLOW;
 
         if (!tracker_activate_pdp()) continue;             /* mất mạng giữa chừng: kiểm tra lại từ đầu */
+        if (!device_enabled) continue;                     /* bị tắt trong lúc chờ mạng/PDP */
 
         ctx.sockfd = tracker_tcp_connect();
         if (ctx.sockfd < 0) {

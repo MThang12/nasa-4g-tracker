@@ -25,7 +25,13 @@ int tracker_build_backup(char *out, size_t out_size, uint32_t msg_id,
 /** Chờ server trả ACK login tối đa TRACKER_LOGIN_ACK_TIMEOUT_SEC. */
 BOOL tracker_wait_login_ack(int fd);
 
-/** Kiểm tra phiên TCP còn sống (dữ liệu server gửi xuống bị bỏ). @return FALSE nếu server đóng/socket lỗi. */
+/**
+ * Chạy 1 lệnh cấu hình "sa,<mã>" / "na,<mã>,<nội dung>" (dùng chung cho TCP và SMS).
+ * @return độ dài phản hồi (không kèm "\r\n"); 0 nếu không phải lệnh hoặc lệnh chưa hỗ trợ (không phản hồi).
+ */
+int tracker_cmd_execute(const char *line, char *reply, size_t reply_size);
+
+/** Kiểm tra phiên TCP còn sống, nhận và xử lý lệnh cấu hình "na,..."/"sa,..." từ server. @return FALSE nếu server đóng/socket lỗi. */
 BOOL tracker_poll_server(int fd, int timeout_ms);
 
 #endif /* TRACKER_PROTOCOL_H */

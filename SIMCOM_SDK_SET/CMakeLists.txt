@@ -226,6 +226,7 @@ if(NOT DEFINED MODULE_LIST)
                 tracker/tracker_sensor.c
                 tracker/tracker_net.c
                 tracker/tracker_protocol.c
+                tracker/tracker_sms.c
             )
             INCLUDE_DIRECTORIES(./tracker)
         elseif(CONFIG_SIMCOM_PROTOCOL_V2)
