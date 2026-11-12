@@ -29,7 +29,9 @@
 #define TRACKER_LOGIN_ACK_TIMEOUT_SEC    15       /* chờ server trả ACK login */
 #define TRACKER_RX_POLL_MS               200      /* bước select khi chờ ACK */
 #define TRACKER_RF_RESET_RETRIES         15       /* số lần kiểm tra mạng lỗi trước khi reset RF */
-#define TRACKER_BACKUP_INTERVAL_SEC      20       /* chu kỳ lưu backup khi mất kết nối */
+/* Chu kỳ lưu backup khi mất kết nối (theo ACC; ACC đổi trạng thái thì lưu ngay) */
+#define TRACKER_BACKUP_ACC_ON_SEC        20       /* ACC bật */
+#define TRACKER_BACKUP_ACC_OFF_SEC       300      /* ACC tắt */
 
 /* --- Lưu backup xuống flash khi RAM đầy ---
  * Dùng hệ thống file sẵn có của SDK (sAPI_fopen/fwrite/fread/fclose/remove), ghi theo LÔ
@@ -38,6 +40,7 @@
  * CẦN KIỂM TRA THỰC TẾ: nếu sAPI_fopen() trả NULL dù đường dẫn đúng, module có thể cần
  * mount file system trước (xem sAPI_NorFlashMountLfs trong demo_exfs.c của SDK). */
 #define TRACKER_BACKUP_FLASH_PATH        "C:/nasa_backup.dat"
+#define TRACKER_BACKUP_FLUSH_EVERY       10       /* RAM đủ số bản này thì ghi cả lô xuống flash: mất nguồn chỉ mất < 10 bản */
 
 /* --- Trạng thái lưu bền qua khởi động lại (tracker_backup.c) ---
  * msg_id: dành trước một khối ID, chỉ ghi flash khi dùng hết khối -> không trùng ID sau reboot trong ngày.
@@ -64,7 +67,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261109c"
+#define TRACKER_FW_VERSION               "v1.0.261111b"
 #define TRACKER_LOGIN_CODE               "007507"
 
 /* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---

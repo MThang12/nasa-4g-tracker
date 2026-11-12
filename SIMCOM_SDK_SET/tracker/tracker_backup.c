@@ -126,6 +126,17 @@ void tracker_state_msg_id_reserve(const char *datetime, uint32_t msg_id)
 
 void tracker_backup_startup(void)
 {
+    /* Log dung lượng ổ C:/ (LittleFS) 1 lần khi khởi động, để đánh giá độ mòn flash.
+     * In dạng unsigned long (%lu): sAPI_Debug hỗ trợ %lld hay không là CHƯA XÁC MINH. */
+    {
+        char disc[] = "C:/";
+        long long total = sAPI_GetSize(disc);
+        long long free_sz = sAPI_GetFreeSize(disc);
+        long long used = sAPI_GetUsedSize(disc);
+        sAPI_Debug("[NASA] Flash C: total=%lu B, free=%lu B, used=%lu B",
+                   (unsigned long)total, (unsigned long)free_sz, (unsigned long)used);
+    }
+
     tracker_state_load();
 
     /* Startup probe: kiểm tra file backup còn sót từ lần reset trước.
@@ -157,18 +168,19 @@ BOOL tracker_backup_pop(backup_record_t *out)
 
 /**
  * Ghi TOÀN BỘ hàng đợi RAM hiện tại xuống file flash trong một lần mở file (chế độ "ab" -
- * nối thêm vào cuối, giữ dữ liệu cũ nếu có từ lần tràn trước), rồi làm rỗng RAM để có chỗ
- * cho các bản ghi mới nhất tiếp theo. Chỉ gọi khi RAM đã đầy và vẫn đang mất kết nối.
+ * nối thêm vào cuối, giữ dữ liệu cũ nếu có), rồi làm rỗng RAM.
+ * Được gọi theo lô nhỏ (RAM đủ TRACKER_BACKUP_FLUSH_EVERY bản) và khi RAM đầy (BACKUP_QUEUE_MAX).
  *
  * LUẦU Ý API SDK SIMCom: sAPI_fwrite/fread trả về số BYTES đã ghi/đọc (không phải số phần tử
  * như fwrite/fread chuẩn C). Phải so sánh với sizeof(rec), không phải với 1.
  *
  * Xử lý lỗi:
- *   - fopen lỗi: reset RAM để tránh vòng lặp vô hạn.
+ *   - fopen lỗi / không ghi được bản nào: drop_on_fail = TRUE (RAM đầy, cần chỗ) thì reset RAM để
+ *     tránh vòng lặp vô hạn; FALSE (ghi theo lô) thì giữ nguyên RAM, thử lại ở lô sau.
  *   - fwrite lỗi giữa chừng: trả bản ghi vừa pop về RAM, dừng, đóng file.
  *   - Ghi xong (n > 0): đặt flash_has_data = TRUE để vòng lặp session biết có flash cần gửi.
  */
-static void tracker_flash_archive_ram(void)
+static void tracker_flash_archive_ram(BOOL drop_on_fail)
 {
     SCFILE *fp;
     backup_record_t rec;
@@ -177,9 +189,13 @@ static void tracker_flash_archive_ram(void)
 
     fp = sAPI_fopen(TRACKER_BACKUP_FLASH_PATH, "ab");
     if (fp == NULL) {
-        sAPI_Debug("[NASA] Flash archive: khong mo duoc file, reset RAM tranh lap vo han");
-        backup_head = backup_tail = backup_count = 0;
         flash_ok = FALSE;
+        if (drop_on_fail) {
+            sAPI_Debug("[NASA] Flash archive: khong mo duoc file, reset RAM tranh lap vo han");
+            backup_head = backup_tail = backup_count = 0;
+        } else {
+            sAPI_Debug("[NASA] Flash archive: khong mo duoc file, giu lai %d ban trong RAM", backup_count);
+        }
         return;
     }
 
@@ -203,7 +219,7 @@ static void tracker_flash_archive_ram(void)
 
     if (n > 0) {
         flash_has_data = TRUE;      /* bật cache: vòng lặp session sẽ gửi từ flash */
-    } else {
+    } else if (drop_on_fail) {
         sAPI_Debug("[NASA] Flash archive: flash loi lien tuc, reset RAM");
         backup_head = backup_tail = backup_count = 0;
     }
@@ -274,11 +290,16 @@ BOOL tracker_flash_pop_one(backup_record_t *out)
     return FALSE;
 }
 
-/** Thêm một bản ghi vào hàng đợi RAM; nếu đầy thì archive toàn bộ xuống flash trước. */
+/**
+ * Thêm một bản ghi vào hàng đợi RAM.
+ *   - RAM đầy: archive toàn bộ xuống flash trước (lỗi flash thì bỏ RAM để có chỗ).
+ *   - Sau khi thêm, RAM đủ TRACKER_BACKUP_FLUSH_EVERY bản: ghi cả lô xuống flash (lỗi thì giữ RAM),
+ *     để mất nguồn chỉ mất các bản chưa đủ lô. Thứ tự gửi vẫn đúng: session gửi flash (cũ) trước, RAM (mới) sau.
+ */
 void tracker_backup_push(const char *dt, const tracker_location_t *loc, BOOL acc_on, double voltage)
 {
     if (backup_count >= BACKUP_QUEUE_MAX) {
-        tracker_flash_archive_ram();                     /* RAM đầy: lưu hết xuống flash, làm rỗng RAM */
+        tracker_flash_archive_ram(TRUE);                 /* RAM đầy: lưu hết xuống flash, làm rỗng RAM */
     }
     snprintf(backup_queue[backup_head].datetime, sizeof(backup_queue[backup_head].datetime), "%s", dt);
     backup_queue[backup_head].loc    = *loc;
@@ -286,6 +307,10 @@ void tracker_backup_push(const char *dt, const tracker_location_t *loc, BOOL acc
     backup_queue[backup_head].voltage = voltage;
     backup_head = (backup_head + 1) % BACKUP_QUEUE_MAX;
     backup_count++;
+
+    if (backup_count >= TRACKER_BACKUP_FLUSH_EVERY) {
+        tracker_flash_archive_ram(FALSE);                /* ghi theo lô nhỏ, lỗi thì giữ RAM thử lại lô sau */
+    }
 }
 
 /* ===========================================================================
@@ -293,40 +318,43 @@ void tracker_backup_push(const char *dt, const tracker_location_t *loc, BOOL acc
  * =========================================================================== */
 
 /**
- * Lưu vị trí vào hàng đợi backup khi đang mất kết nối.
- * Chu kỳ lưu phụ thuộc trạng thái ACC tại thời điểm gọi:
- *   ACC ON  → mỗi TRACKER_RUN_INTERVAL_SEC  (10 s)
- *   ACC OFF → mỗi TRACKER_STOP_INTERVAL_SEC (300 s)
- * Đảm bảo mật độ bản tin backup khớp đúng với chu kỳ NASA-2 thực tế,
- * tránh gửi bù quá dày hoặc quá thưa khi có lại kết nối.
+ * Lưu vị trí vào hàng đợi backup khi đang mất kết nối. Kiểm tra mỗi giây, lưu khi:
+ *   - bản đầu tiên (chưa lưu bản nào), hoặc
+ *   - ACC đổi trạng thái so với bản trước, hoặc
+ *   - đã qua đủ chu kỳ theo ACC: TRACKER_BACKUP_ACC_ON_SEC (20 s) / TRACKER_BACKUP_ACC_OFF_SEC (300 s).
  * Chỉ chạy khi: đã từng đăng nhập, hiện không có phiên, và đã có giờ hợp lệ.
  * Được gọi trong mọi vòng chờ (tracker_delay, chờ giờ, chờ ACK) để không bỏ sót dữ liệu.
  */
 void tracker_process_backup(void)
 {
+    static int last_acc = -1;                     /* ACC của bản gần nhất, -1 = chưa có */
     tracker_location_t loc;
     char dt[32];
     uint32_t now, delta;
     BOOL acc_on;
-    int  backup_interval;
+    const char *reason;
 
     if (is_logged_in || !has_logged_in_once) return;
     now = tracker_get_seconds_today();
     if (now == 0) return;
 
-    /* Chu kỳ lưu backup = chu kỳ NASA-2 theo ACC hiện tại */
-    acc_on          = tracker_get_acc_status();
-    backup_interval = acc_on ? TRACKER_RUN_INTERVAL_SEC : TRACKER_STOP_INTERVAL_SEC;
+    acc_on = tracker_get_acc_status();
 
-    /* Khoảng cách với lần backup trước (xử lý qua nửa đêm) */
+    /* Khoảng thời gian với lần backup trước (xử lý qua nửa đêm) */
     delta = (now >= last_backup_time) ? (now - last_backup_time) : (now + 86400 - last_backup_time);
-    if (delta < (uint32_t)backup_interval && last_backup_time != 0) return;
+
+    if (last_backup_time == 0)                          reason = "first";
+    else if (last_acc >= 0 && (int)acc_on != last_acc)  reason = "acc";
+    else if (delta >= (uint32_t)(acc_on ? TRACKER_BACKUP_ACC_ON_SEC : TRACKER_BACKUP_ACC_OFF_SEC))
+                                                        reason = acc_on ? "acc_on" : "acc_off";
+    else return;
 
     if (tracker_get_location(&loc) && tracker_get_datetime(dt, sizeof(dt))) {
         tracker_backup_push(dt, &loc, acc_on, tracker_get_voltage());
         last_backup_time = now;
-        sAPI_Debug("[NASA] Backup saved (ACC=%d, interval=%ds), queue=%d/%d",
-                   acc_on, backup_interval, backup_count, BACKUP_QUEUE_MAX);
+        last_acc = (int)acc_on;
+        sAPI_Debug("[NASA] Backup saved (%s, ACC=%d, fix=%d, dt=%lus), queue=%d/%d",
+                   reason, acc_on, loc.fixValid, (unsigned long)delta, backup_count, BACKUP_QUEUE_MAX);
     }
 }
 
