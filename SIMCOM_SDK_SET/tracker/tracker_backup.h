@@ -45,6 +45,9 @@ BOOL tracker_flash_pop_one(backup_record_t *out);
 /** Thêm một bản ghi vào hàng đợi RAM; nếu đầy thì archive toàn bộ xuống flash trước. */
 void tracker_backup_push(const char *dt, const tracker_location_t *loc, BOOL acc_on, double voltage);
 
+/** Ghi các bản ghi còn trong RAM xuống flash (trước khi reset bằng lệnh 9). */
+void tracker_backup_flush_ram(void);
+
 /** Lưu vị trí vào backup khi đang mất kết nối (chỉ chạy sau khi đã đăng nhập ít nhất 1 lần). */
 void tracker_process_backup(void);
 

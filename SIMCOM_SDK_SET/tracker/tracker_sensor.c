@@ -49,6 +49,18 @@ void tracker_gnss_power_off(void)
     sAPI_Debug("[NASA] GNSS power off ret=%d", (int)ret);
 }
 
+/* Vị trí có fix gần nhất (lệnh 27 dùng khi hiện tại chưa fix). Chỉ task tracker đọc/ghi. */
+static BOOL   last_fix_valid = FALSE;
+static double last_fix_lat = 0.0, last_fix_lon = 0.0;
+
+BOOL tracker_get_last_fix(double *lat, double *lon)
+{
+    if (!last_fix_valid || lat == NULL || lon == NULL) return FALSE;
+    *lat = last_fix_lat;
+    *lon = last_fix_lon;
+    return TRUE;
+}
+
 /**
  * Đọc vị trí hiện tại. Số vệ tinh luôn được cập nhật; tọa độ/tốc độ/độ cao chỉ lấy
  * khi đã fix, còn không thì để 0 (tránh dính tọa độ cũ trong bộ đệm).
@@ -70,6 +82,9 @@ BOOL tracker_get_location(tracker_location_t *out)
         out->lon      = tracker_nmea_to_decimal(info->lon, info->lon_we);
         out->speed    = atof(info->speed);
         out->altitude = atof(info->alt);
+        last_fix_lat   = out->lat;                         /* nhớ vị trí cho lệnh 27 */
+        last_fix_lon   = out->lon;
+        last_fix_valid = TRUE;
     }
     return TRUE;
 }

@@ -15,4 +15,10 @@ void tracker_sms_init(void);
 /** Xử lý SMS mới (nếu có). Không chặn khi không có SMS; khi gửi phản hồi thì chờ tối đa TRACKER_SMS_SEND_TIMEOUT_SEC. */
 void tracker_sms_poll(void);
 
+/**
+ * Phản hồi của lệnh SMS gần nhất cần báo lên server bằng NASA-13 (chỉ lưu khi đang có phiên).
+ * @return chuỗi phản hồi (hợp lệ tới lần tracker_sms_poll() kế tiếp) và xóa cờ; NULL nếu không có.
+ */
+const char *tracker_sms_report_take(void);
+
 #endif /* TRACKER_SMS_H */

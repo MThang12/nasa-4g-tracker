@@ -22,6 +22,9 @@ void tracker_gnss_power_off(void);
 /** Đọc vị trí hiện tại (tọa độ chỉ có khi đã fix). @return FALSE nếu SDK không trả dữ liệu. */
 BOOL tracker_get_location(tracker_location_t *out);
 
+/** Vị trí có fix gần nhất (lưu RAM mỗi lần tracker_get_location có fix; mất khi khởi động lại). @return FALSE nếu chưa có. */
+BOOL tracker_get_last_fix(double *lat, double *lon);
+
 /** Đọc hướng chạy (độ, [0, 360)) từ trường course. @return FALSE nếu chưa fix hoặc giá trị không hợp lệ. */
 BOOL tracker_get_course(double *deg);
 

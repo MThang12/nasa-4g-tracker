@@ -8,6 +8,7 @@
 #include "tracker_time.h"
 #include "tracker_sensor.h"
 #include "tracker_sms.h"
+#include "tracker_protocol.h"   /* tracker_cmd_service() trong tracker_delay */
 
 /* Hàng đợi backup (RAM): bộ đệm vòng ~8.8 KB, đầy thì archive toàn bộ xuống flash.
  * Giữ nhỏ (100 bản) để tránh tràn RAM userspace của module (~64 KB tổng). */
@@ -399,6 +400,14 @@ void tracker_process_backup(void)
 }
 
 /** Ngủ `seconds` giây, mỗi giây kiểm tra backup một lần (thay cho sleep thường). */
+void tracker_backup_flush_ram(void)
+{
+    if (backup_count > 0) {
+        sAPI_Debug("[NASA] Flush %d ban backup RAM xuong flash", backup_count);
+        tracker_flash_archive_ram(FALSE);
+    }
+}
+
 void tracker_delay(int seconds)
 {
     while (seconds-- > 0) {
@@ -406,5 +415,6 @@ void tracker_delay(int seconds)
         tracker_alive();
         tracker_process_backup();
         tracker_sms_poll();                                /* lệnh cấu hình qua SMS, kể cả khi mất kết nối server */
+        tracker_cmd_service();                             /* lệnh 9: reset khi đến hạn */
     }
 }

@@ -17,6 +17,12 @@
 /* --- Server và mạng --- */
 #define TRACKER_SERVER_HOST              "tcp.rovigps.vn"   /* tên miền: phân giải bằng getaddrinfo() trong tracker_tcp_connect */
 #define TRACKER_SERVER_PORT              2598
+/* Lệnh 1 (na,1,<host>,<port>): server cấu hình lưu ở file (text "host,port"); không có file = mặc định ở trên.
+ * Server cấu hình (khác mặc định) lỗi kết nối/đăng nhập liên tiếp TRACKER_SERVER_FALLBACK_FAILS lần
+ * -> quay về server mặc định đến hết lần chạy này (file giữ nguyên, khởi động lại sẽ thử lại). */
+#define TRACKER_SERVER_CFG_PATH          "C:/nasa_server.dat"
+#define TRACKER_SERVER_HOST_MAX          63       /* độ dài tối đa tên miền/IP */
+#define TRACKER_SERVER_FALLBACK_FAILS    10
 #define TRACKER_PDP_ID                   1
 
 /* --- Chu kỳ gửi hành trình (giây) --- */
@@ -76,17 +82,26 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261112d"
+#define TRACKER_FW_VERSION               "v1.0.261113e"
 #define TRACKER_LOGIN_CODE               "007507"
 
 /* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---
  * Lần login đầu sau khởi động: R-1.0 nếu có file dấu watchdog, ngược lại R-2.0 (bật nguồn).
- * Các lần login sau trong cùng lần chạy (kết nối lại TCP): R-0.0. R-3.0 hiện chưa dùng. */
+ * Các lần login sau trong cùng lần chạy (kết nối lại TCP): R-0.0.
+ * File dấu chứa chuỗi lý do: "R-3.0" = reset mềm bằng lệnh 9, nội dung khác = watchdog. */
 #define TRACKER_RESET_REASON_RECONNECT   "R-0.0"
 #define TRACKER_RESET_REASON_WATCHDOG    "R-1.0"
 #define TRACKER_RESET_REASON_POWER_ON    "R-2.0"
 #define TRACKER_RESET_REASON_SOFT        "R-3.0"
-#define TRACKER_RESET_FLAG_PATH          "C:/nasa_reset.dat"  /* có file = lần reset trước do watchdog */
+#define TRACKER_RESET_FLAG_PATH          "C:/nasa_reset.dat"  /* có file = lần reset trước do watchdog / lệnh 9 */
+#define TRACKER_CMD_RESET_DELAY_SEC      5        /* lệnh 9: reset sau khi phản hồi ngần này giây (bảng lệnh: 5-10 s) */
+
+/* --- Lệnh 33: cập nhật firmware (customer_app.bin) từ xa bằng sAPI_AppDownload (sc_app_download.h) --- */
+#define TRACKER_FOTA_URL_MAX             255      /* SC_FOTA_URL_MAX_SIZE = 256 gồm '\0' */
+#define TRACKER_FOTA_TIMEOUT_SEC         600      /* quá thời gian này chưa xong -> reset mềm (chạy lại firmware cũ) */
+#define TRACKER_FOTA_RECV_TIMEOUT_MS     20000    /* SCAppDownloadPram.recvtimeout (giá trị theo demo_app_download.c) */
+#define TRACKER_FOTA_TASK_STACK          (1024 * 10)  /* như demo_app_download.c */
+#define TRACKER_FOTA_TASK_PRIO           100
 
 /* --- Điện áp nguồn xe: đo thật qua ADC của module ---
  * API của SDK A7677S: `unsigned int sAPI_ReadAdc(int channel)` (khai báo trong sc_power.h),
@@ -153,6 +168,7 @@
 #define NASA_MSG_LOGIN                   1
 #define NASA_MSG_JOURNEY                 2
 #define NASA_MSG_BACKUP                  7
+#define NASA_MSG_SMS_REPORT              13       /* báo lên server lệnh nhận qua SMS + phản hồi (theo mẫu server) */
 
 /* --- Bit trạng thái NASA (trường "status" của NASA-2/7) ---
  * Hiện chỉ dùng GPS, FLASH_OK, ACC, BATTERY_OK; các bit còn lại để dành cho mở rộng. */

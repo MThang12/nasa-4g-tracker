@@ -143,6 +143,7 @@ static BOOL tracker_login(tracker_ctx_t *c)
         wait_ms += 1000;
         tracker_process_backup();
         tracker_sms_poll();
+        tracker_cmd_service();
     }
 
     if (len > 0 && device_enabled) {                       /* lệnh 38 tắt trong lúc chờ: không đăng nhập */
@@ -208,12 +209,38 @@ static void tracker_run_session(tracker_ctx_t *c)
         /* (1b) Theo dõi GPS mỗi vòng (~100 ms): LED + log, không phụ thuộc chu kỳ gửi */
         tracker_monitor_gnss(&last_fix);
 
-        /* (1c) Lệnh cấu hình qua SMS (đọc hàng đợi URC không chặn) */
+        /* (1c) Lệnh cấu hình qua SMS (đọc hàng đợi URC không chặn), báo lên server bằng NASA-13 */
         tracker_sms_poll();
+        {
+            const char *sms_rep = tracker_sms_report_take();
+            if (sms_rep != NULL && !tracker_send_sms_report(c, sms_rep)) {
+                sAPI_Debug("[NASA] NASA-13 gui loi -> reconnect");
+                tracker_drop_session(c);
+                return;
+            }
+        }
 
         /* (1d) Lệnh 38 tắt thiết bị (qua TCP hoặc SMS, phản hồi đã gửi xong): đóng phiên, vòng chính sẽ ngủ */
         if (!device_enabled) {
             sAPI_Debug("[NASA] Lenh 38: tat thiet bi -> dong phien");
+            tracker_drop_session(c);
+            return;
+        }
+
+        /* (1e) Lệnh 1 đổi server / lệnh 9 reset (phản hồi đã gửi xong): đóng phiên.
+         * Vòng chính kết nối server mới; reset thực hiện trong tracker_delay khi đến hạn. */
+        if (tracker_cmd_reconnect_take()) {
+            sAPI_Debug("[NASA] Lenh 1: doi server -> dong phien, ket noi lai");
+            tracker_drop_session(c);
+            return;
+        }
+        if (tracker_cmd_reset_pending()) {
+            sAPI_Debug("[NASA] Lenh 9: dong phien, cho reset");
+            tracker_drop_session(c);
+            return;
+        }
+        if (tracker_cmd_fota_pending()) {
+            sAPI_Debug("[NASA] Lenh 33: dong phien, cap nhat firmware");
             tracker_drop_session(c);
             return;
         }
@@ -361,6 +388,7 @@ static void tracker_device_off_wait(tracker_ctx_t *c)
         sAPI_TaskSleep(SEC_TO_TICKS(1));
         tracker_alive();
         tracker_sms_poll();
+        tracker_cmd_service();                             /* lệnh 9 vẫn reset được khi đang tắt */
     }
 
     sAPI_Debug("[NASA] Device ON (lenh 38): bat lai GPS, ket noi server");
@@ -390,6 +418,7 @@ static void sTask_NasaTracker(void *arg)
 
     /* Trạng thái lưu bền (msg_id đã dành, vị trí đọc backup) + file backup còn sót từ lần reset trước */
     tracker_backup_startup();
+    tracker_server_load();                                 /* server cấu hình bằng lệnh 1 (nếu có) */
 
     while (1) {
         tracker_alive();
@@ -404,14 +433,29 @@ static void sTask_NasaTracker(void *arg)
         if (!tracker_activate_pdp()) continue;             /* mất mạng giữa chừng: kiểm tra lại từ đầu */
         if (!device_enabled) continue;                     /* bị tắt trong lúc chờ mạng/PDP */
 
+        {   /* Lệnh 33: đã có PDP, không còn phiên -> tải firmware (thành công thì reset, không quay lại) */
+            const char *fota_url = tracker_cmd_fota_take();
+            if (fota_url != NULL) {
+                tracker_fota_run(fota_url);
+                continue;                                  /* lỗi: kiểm tra lại mạng/PDP rồi kết nối server */
+            }
+        }
+
+        (void)tracker_cmd_reconnect_take();                /* sắp kết nối mới: cờ đổi server không còn ý nghĩa */
         ctx.sockfd = tracker_tcp_connect();
         if (ctx.sockfd < 0) {
             is_logged_in = FALSE;
+            tracker_server_result(FALSE);                  /* đếm lỗi để quay về server mặc định */
             tracker_delay(TRACKER_TCP_RETRY_SEC);
             continue;
         }
 
-        if (tracker_login(&ctx)) tracker_run_session(&ctx);
+        if (tracker_login(&ctx)) {
+            tracker_server_result(TRUE);
+            tracker_run_session(&ctx);
+        } else {
+            tracker_server_result(FALSE);
+        }
         tracker_delay(TRACKER_TCP_RETRY_SEC);              /* nghỉ rồi kết nối lại (backup vẫn chạy) */
     }
 }

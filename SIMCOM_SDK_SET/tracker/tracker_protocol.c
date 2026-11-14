@@ -118,6 +118,49 @@ int tracker_build_backup(char *out, size_t out_size, uint32_t msg_id,
                                   &rec->loc, rec->acc_on, rec->voltage, odometer_km, heading);
 }
 
+/**
+ * NASA-13 (mẫu server, checksum đã đối chiếu = 11039):
+ *   !NASA,13,181,2026-11-13 14:32:32,info. NASA-4G.8613....131126111135. GSM.1.24.38.0. ... TI.131126-14:32:32.#OK,*11039
+ * Nội dung phản hồi: ',' -> '.', mỗi dòng kết thúc '.', các dòng cách nhau 1 dấu cách; thêm "info. " ở đầu,
+ * "#OK," ở cuối. "info" và "#OK" dùng cố định cho mọi lệnh (ý nghĩa CHƯA XÁC MINH).
+ */
+BOOL tracker_send_sms_report(tracker_ctx_t *c, const char *reply)
+{
+    static char payload[TRACKER_RX_BUF_SIZE + 128];
+    static char msg[TRACKER_RX_BUF_SIZE + 160];
+    char datetime[32];
+    const char *p;
+    int n, len;
+
+    if (c == NULL || reply == NULL || c->sockfd < 0) return TRUE;
+    if (!tracker_get_datetime(datetime, sizeof(datetime))) {
+        sAPI_Debug("[NASA] NASA-13: chua co gio, bo qua");
+        return TRUE;
+    }
+    tracker_msg_id_check_new_day(c, datetime);
+
+    n = snprintf(payload, sizeof(payload), "!NASA,%d,%lu,%s,info. ",
+                 NASA_MSG_SMS_REPORT, (unsigned long)c->msg_id, datetime);
+    if (n <= 0 || n >= (int)sizeof(payload)) return TRUE;
+    for (p = reply; *p != '\0' && n < (int)sizeof(payload) - 8; p++) {
+        if (*p == '\r') continue;
+        if (*p == '\n') {                                   /* hết 1 dòng: ". " */
+            payload[n++] = '.';
+            payload[n++] = ' ';
+        } else {
+            payload[n++] = (*p == ',') ? '.' : *p;          /* ',' là dấu tách trường của giao thức */
+        }
+    }
+    memcpy(payload + n, ".#OK,", 6);                       /* gồm '\0' */
+
+    len = tracker_finish_msg(payload, msg, sizeof(msg));
+    if (len <= 0 || len >= (int)sizeof(msg)) return TRUE;
+    sAPI_Debug("[NASA] TX NASA-13: %s", msg);
+    if (tracker_tcp_send_all(c->sockfd, msg, len) != len) return FALSE;
+    c->msg_id++;
+    return TRUE;
+}
+
 /* ===========================================================================
  * 13. XÁC THỰC ACK ĐĂNG NHẬP VÀ GIÁM SÁT PHIÊN
  * =========================================================================== */
@@ -165,7 +208,7 @@ BOOL tracker_wait_login_ack(int fd)
         tracker_alive();
         elapsed_ms     += TRACKER_RX_POLL_MS;
         backup_tick_ms += TRACKER_RX_POLL_MS;
-        if (backup_tick_ms >= 1000) { tracker_process_backup(); tracker_sms_poll(); backup_tick_ms = 0; }
+        if (backup_tick_ms >= 1000) { tracker_process_backup(); tracker_sms_poll(); tracker_cmd_service(); backup_tick_ms = 0; }
 
         if (ret == 0 || !FD_ISSET(fd, &rfds)) continue;    /* chưa có dữ liệu */
 
@@ -237,9 +280,170 @@ static int tracker_cmd_device_info(char *out, size_t out_size)
                     is_logged_in ? 1 : 0, tracker_get_csq(),
                     gps_state, (gi != NULL && gi->fixValid) ? 1 : 0,
                     gi != NULL ? atoi(gi->valid_sate_num) : 0,
-                    TRACKER_SERVER_HOST, TRACKER_SERVER_PORT, is_logged_in ? 1 : 0,
+                    tracker_server_host(), tracker_server_port(), is_logged_in ? 1 : 0,
                     device_enabled ? 0 : 1, tracker_get_voltage(),
                     ti_str);
+}
+
+/* Hành động chờ thực hiện SAU khi phản hồi đã gửi (chỉ task tracker đọc/ghi) */
+static BOOL   cmd_reconnect_pending = FALSE;              /* lệnh 1: đóng phiên, kết nối server mới */
+static BOOL   cmd_reset_pending     = FALSE;              /* lệnh 9 */
+static UINT32 cmd_reset_due_tick    = 0;
+static BOOL   cmd_fota_pending      = FALSE;              /* lệnh 33 */
+static char   cmd_fota_url[TRACKER_FOTA_URL_MAX + 1];
+
+BOOL tracker_cmd_fota_pending(void)
+{
+    return cmd_fota_pending;
+}
+
+const char *tracker_cmd_fota_take(void)
+{
+    if (!cmd_fota_pending) return NULL;
+    cmd_fota_pending = FALSE;
+    return cmd_fota_url;
+}
+
+BOOL tracker_cmd_reconnect_take(void)
+{
+    BOOL r = cmd_reconnect_pending;
+    cmd_reconnect_pending = FALSE;
+    return r;
+}
+
+BOOL tracker_cmd_reset_pending(void)
+{
+    return cmd_reset_pending;
+}
+
+void tracker_cmd_service(void)
+{
+    if (!cmd_reset_pending || (int32_t)(sAPI_GetTicks() - cmd_reset_due_tick) < 0) return;
+    sAPI_Debug("[NASA] Lenh 9: reset thiet bi");
+    tracker_backup_flush_ram();                            /* không mất các bản backup chưa ghi flash */
+    tracker_reset_mark(TRACKER_RESET_REASON_SOFT);         /* lần login đầu sau khởi động gửi R-3.0 */
+    sAPI_TaskSleep(SEC_TO_TICKS(1));                       /* cho log kịp xuất */
+    sAPI_SysReset();
+}
+
+/** Phần còn lại sau mã lệnh chỉ là khoảng trắng / CR / LF. */
+static BOOL tracker_cmd_args_empty(const char *args)
+{
+    while (*args == ' ' || *args == '\r' || *args == '\n') args++;
+    return (*args == '\0') ? TRUE : FALSE;
+}
+
+/**
+ * Lệnh 1 - Địa chỉ IP/port server. args trỏ ngay sau mã lệnh.
+ *   sa,1               -> "ip/port: <host>,<port>" (server đã cấu hình)
+ *   na,1,<host>,<port> -> lưu, phản hồi như sa,1, rồi đóng phiên để kết nối server mới
+ */
+static int tracker_cmd_server(BOOL is_read, const char *args, char *out, size_t out_size)
+{
+    char buf[TRACKER_SERVER_HOST_MAX + 16];
+    char *comma, *e = NULL;
+    size_t n;
+    long port;
+
+    if (!is_read) {
+        if (args[0] != ',') return snprintf(out, out_size, "loi tham so");
+        n = strlen(args + 1);
+        if (n >= sizeof(buf)) return snprintf(out, out_size, "loi tham so");
+        memcpy(buf, args + 1, n + 1);
+        while (n > 0 && (buf[n - 1] == ' ' || buf[n - 1] == '\r' || buf[n - 1] == '\n')) buf[--n] = '\0';
+        comma = strrchr(buf, ',');
+        if (comma == NULL) return snprintf(out, out_size, "loi tham so");
+        *comma = '\0';
+        port = strtol(comma + 1, &e, 10);
+        if (e == comma + 1 || *e != '\0' || !tracker_server_valid(buf, port)) return snprintf(out, out_size, "loi tham so");
+
+        tracker_server_set(buf, (int)port);
+        cmd_reconnect_pending = TRUE;
+    }
+    return snprintf(out, out_size, "ip/port: %s,%d", tracker_server_cfg_host(), tracker_server_cfg_port());
+}
+
+/** Tọa độ thập phân -> "<N/S|E/W>%20<độ>%20<phút, 6 số lẻ>" (dạng bảng lệnh, %20 = dấu cách trong URL). */
+static void tracker_fmt_deg_min(char *out, size_t out_size, double v, char pos, char neg)
+{
+    char hemi = (v < 0.0) ? neg : pos;
+    int deg;
+    double min;
+
+    if (v < 0.0) v = -v;
+    deg = (int)v;
+    min = (v - deg) * 60.0;
+    if (min >= 59.9999995) { deg++; min = 0.0; }         /* tránh "60.000000" khi làm tròn */
+    snprintf(out, out_size, "%c%%20%d%%20%.6f", hemi, deg, min);
+}
+
+/**
+ * Lệnh 27 - Lấy tọa độ hiện tại (chỉ đọc):
+ *   có fix          -> https://maps.google.com/maps?q=N%2010%2048.748199%20E%20106%2040.033428#OK
+ *   chưa fix / GPS tắt (lệnh 38) nhưng có vị trí cũ trong lần chạy này -> như trên, đuôi #LAST
+ *   chưa từng có fix -> "chua xac dinh duoc vi tri GPS"
+ */
+static int tracker_cmd_location(char *out, size_t out_size)
+{
+    tracker_location_t loc;
+    char lat_s[48], lon_s[48];
+    double lat, lon;
+    const char *tag;
+
+    if (device_enabled && tracker_get_location(&loc) && loc.fixValid) {
+        lat = loc.lat;
+        lon = loc.lon;
+        tag = "OK";
+    } else if (tracker_get_last_fix(&lat, &lon)) {
+        tag = "LAST";
+    } else {
+        return snprintf(out, out_size, "chua xac dinh duoc vi tri GPS");
+    }
+    tracker_fmt_deg_min(lat_s, sizeof(lat_s), lat, 'N', 'S');
+    tracker_fmt_deg_min(lon_s, sizeof(lon_s), lon, 'E', 'W');
+    return snprintf(out, out_size, "https://maps.google.com/maps?q=%s%%20%s#%s", lat_s, lon_s, tag);
+}
+
+/** Lệnh 9 - Reset thiết bị (chỉ ghi): phản hồi "OK", reset sau TRACKER_CMD_RESET_DELAY_SEC. */
+static int tracker_cmd_reset(const char *args, char *out, size_t out_size)
+{
+    if (!tracker_cmd_args_empty(args)) return snprintf(out, out_size, "loi tham so");
+    cmd_reset_pending  = TRUE;
+    cmd_reset_due_tick = sAPI_GetTicks() + (UINT32)TRACKER_CMD_RESET_DELAY_SEC * TICKS_PER_SEC;
+    return snprintf(out, out_size, "OK");
+}
+
+/**
+ * Lệnh 33 - Cập nhật firmware: na,33,<link tải customer_app.bin> -> "dang update firmware".
+ * Link: http:// | https:// | ftp:// | ftps://, tối đa TRACKER_FOTA_URL_MAX ký tự, không có khoảng trắng.
+ * Tải thực hiện ở sc_application.c (tracker_fota_run) sau khi phản hồi đã gửi.
+ */
+static int tracker_cmd_fota(const char *args, char *out, size_t out_size)
+{
+    static const char *const schemes[] = { "http://", "https://", "ftp://", "ftps://" };
+    const char *url;
+    size_t n, i;
+    BOOL scheme_ok = FALSE;
+
+    if (args[0] != ',') return snprintf(out, out_size, "loi tham so");
+    url = args + 1;
+    n = strlen(url);
+    while (n > 0 && (url[n - 1] == ' ' || url[n - 1] == '\r' || url[n - 1] == '\n')) n--;
+    if (n == 0 || n > TRACKER_FOTA_URL_MAX) return snprintf(out, out_size, "loi tham so");
+    for (i = 0; i < n; i++) {
+        if ((unsigned char)url[i] <= ' ') return snprintf(out, out_size, "loi tham so");
+    }
+    for (i = 0; i < sizeof(schemes) / sizeof(schemes[0]); i++) {
+        size_t k = strlen(schemes[i]);
+        if (n > k && strncmp(url, schemes[i], k) == 0) scheme_ok = TRUE;
+    }
+    if (!scheme_ok) return snprintf(out, out_size, "loi tham so");
+
+    memcpy(cmd_fota_url, url, n);
+    cmd_fota_url[n] = '\0';
+    cmd_fota_pending = TRUE;
+    sAPI_Debug("[NASA] Lenh 33: cho cap nhat firmware tu %s", cmd_fota_url);
+    return snprintf(out, out_size, "dang update firmware");
 }
 
 /**
@@ -259,8 +463,7 @@ static int tracker_cmd_power(BOOL is_read, const char *args, char *out, size_t o
     if (args[0] != ',') return snprintf(out, out_size, "loi tham so");
     v = strtol(args + 1, &e, 10);
     if (e == args + 1 || (v != 0 && v != 1)) return snprintf(out, out_size, "loi tham so");
-    while (*e == ' ' || *e == '\r' || *e == '\n') e++;
-    if (*e != '\0') return snprintf(out, out_size, "loi tham so");
+    if (!tracker_cmd_args_empty(e)) return snprintf(out, out_size, "loi tham so");
 
     tracker_device_set_enabled(v == 1 ? TRUE : FALSE);
     return snprintf(out, out_size, "%s", v == 1 ? "thiet bi hoat dong tro lai" : "thiet bi ngung hoat dong");
@@ -287,6 +490,14 @@ int tracker_cmd_execute(const char *line, char *reply, size_t reply_size)
 
     if (is_read && code == 29) {
         len = tracker_cmd_device_info(reply, reply_size);
+    } else if (code == 1) {
+        len = tracker_cmd_server(is_read, end, reply, reply_size);
+    } else if (is_read && code == 27) {
+        len = tracker_cmd_location(reply, reply_size);
+    } else if (!is_read && code == 33) {
+        len = tracker_cmd_fota(end, reply, reply_size);
+    } else if (!is_read && code == 9) {
+        len = tracker_cmd_reset(end, reply, reply_size);
     } else if (code == 38) {
         len = tracker_cmd_power(is_read, end, reply, reply_size);
     } else {

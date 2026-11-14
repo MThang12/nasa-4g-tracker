@@ -34,7 +34,15 @@ static const char *reset_reason = TRACKER_RESET_REASON_POWER_ON;
 void tracker_reset_reason_init(void)
 {
     if (sAPI_access(TRACKER_RESET_FLAG_PATH, 0) == 0) {    /* 0 = file tồn tại */
-        reset_reason = TRACKER_RESET_REASON_WATCHDOG;
+        char buf[8] = {0};
+        SCFILE *fp = sAPI_fopen(TRACKER_RESET_FLAG_PATH, "rb");
+        if (fp != NULL) {
+            sAPI_fread(buf, 1, sizeof(buf) - 1, fp);
+            sAPI_fclose(fp);
+        }
+        /* "R-3.0" = reset mềm bằng lệnh 9; nội dung khác (kể cả đọc lỗi) = watchdog như trước */
+        reset_reason = (strncmp(buf, TRACKER_RESET_REASON_SOFT, sizeof(TRACKER_RESET_REASON_SOFT) - 1) == 0)
+                       ? TRACKER_RESET_REASON_SOFT : TRACKER_RESET_REASON_WATCHDOG;
         sAPI_remove(TRACKER_RESET_FLAG_PATH);
     } else {
         reset_reason = TRACKER_RESET_REASON_POWER_ON;
@@ -52,10 +60,14 @@ void tracker_reset_reason_consumed(void)
     reset_reason = TRACKER_RESET_REASON_RECONNECT;
 }
 
-/** Ghi file dấu "lần reset sắp tới do watchdog". Gọi từ task LED ngay trước khi ngừng cho ăn. */
-static void tracker_reset_mark_watchdog(void)
+/**
+ * Ghi file dấu lý do cho lần reset sắp tới ("R-1.0" watchdog / "R-3.0" lệnh 9).
+ * Watchdog: task LED gọi ngay trước khi ngừng cho ăn. Lệnh 9: task tracker gọi trước sAPI_SysReset().
+ */
+void tracker_reset_mark(const char *reason)
 {
     SCFILE *fp = sAPI_fopen(TRACKER_RESET_FLAG_PATH, "wb");
+    int len = (int)strlen(reason);
     BOOL ok;
 
     if (fp == NULL) {
@@ -63,11 +75,10 @@ static void tracker_reset_mark_watchdog(void)
         return;
     }
     /* sAPI_fwrite trả về số BYTE đã ghi */
-    ok = (sAPI_fwrite(TRACKER_RESET_REASON_WATCHDOG, 1, sizeof(TRACKER_RESET_REASON_WATCHDOG) - 1, fp)
-          == (int)(sizeof(TRACKER_RESET_REASON_WATCHDOG) - 1)) ? TRUE : FALSE;
+    ok = (sAPI_fwrite(reason, 1, len, fp) == len) ? TRUE : FALSE;
     sAPI_fsync(fp);
     sAPI_fclose(fp);
-    sAPI_Debug("[NASA] Reset mark (watchdog): %s", ok ? "OK" : "FAIL");
+    sAPI_Debug("[NASA] Reset mark (%s): %s", reason, ok ? "OK" : "FAIL");
 }
 
 /* ===========================================================================
@@ -144,7 +155,7 @@ void sTask_LedControl(void *arg)
                 if (tick_100ms % TRACKER_WDT_FEED_PERIOD_TICKS == 0) sAPI_FeedWtd();
             } else {
                 sAPI_Debug("[NASA] WDT: tracker task khong bao song %ds -> ngung cho an, cho reset", TRACKER_WDT_STALL_SEC);
-                tracker_reset_mark_watchdog();
+                tracker_reset_mark(TRACKER_RESET_REASON_WATCHDOG);
                 wdt_give_up = TRUE;   /* chốt: không cho ăn lại dù tracker hồi phục, để dấu R-1.0 luôn khớp lần reset */
             }
         }

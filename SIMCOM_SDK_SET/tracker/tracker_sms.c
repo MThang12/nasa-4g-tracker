@@ -26,6 +26,16 @@ static BOOL     sms_configured = FALSE; /* đã đặt chế độ báo SMS mớ
 static char   last_from[SC_SMS_MAX_ADDRESS_LENGTH + 1] = {0};  /* chống trả lời dồn dập */
 static UINT32 last_reply_tick = 0;
 
+static char   sms_report[TRACKER_RX_BUF_SIZE];       /* phản hồi chờ báo lên server (NASA-13) */
+static BOOL   sms_report_ready = FALSE;
+
+const char *tracker_sms_report_take(void)
+{
+    if (!sms_report_ready) return NULL;
+    sms_report_ready = FALSE;
+    return sms_report;
+}
+
 void tracker_sms_init(void)
 {
     int ret;
@@ -182,32 +192,55 @@ static BOOL tracker_sms_parse(const char *raw, char *from, size_t from_size, cha
     return tracker_sms_rtrim(body) > 0;
 }
 
+/**
+ * sAPI_SmsSendLongMsg gửi ở chế độ text (simcom_sms.h) và để module ở text: log 13/11/2026 cho thấy SMS đến
+ * sau đó có dạng +CMT: "","","<giờ>" (không số gửi, không nội dung) -> không đọc được lệnh.
+ * Sau mỗi lần gửi, đưa module về PDU (sAPI_SmsSetFormat(0): 0 = PDU, 1 = text theo demo_sms.c).
+ */
+static void tracker_sms_restore_pdu(UINT8 fmt_before)
+{
+    UINT8 fmt = 0xFF;
+    SC_SMSReturnCode get_ret, set_ret = SC_SMS_SUCESS;
+
+    get_ret = sAPI_SmsgetFormat(&fmt);
+    if (get_ret != SC_SMS_SUCESS || fmt != 0) set_ret = sAPI_SmsSetFormat(0);
+    sAPI_Debug("[NASA] SMS format truoc=%d sau gui=%d (get ret=%d), dat PDU ret=%d",
+               fmt_before, fmt, get_ret, set_ret);
+}
+
 /** Gửi phản hồi và chờ kết quả tối đa TRACKER_SMS_SEND_TIMEOUT_SEC (vẫn báo sống cho watchdog). */
 static void tracker_sms_send(const char *to, const char *text, int len)
 {
     SIM_MSG_T rsp;
     SC_SMSReturnCode ret;
+    UINT8 fmt_before = 0xFF;
+    BOOL done = FALSE;
     int waited;
 
     while (sAPI_MsgQRecv(sms_rsp_q, &rsp, SC_NO_SUSPEND) == SC_SUCCESS) {    /* bỏ kết quả cũ còn sót */
         if (rsp.arg3 != NULL) sAPI_Free(rsp.arg3);
     }
 
+    (void)sAPI_SmsgetFormat(&fmt_before);
     ret = sAPI_SmsSendLongMsg((UINT8 *)text, (UINT16)len, (UINT8 *)to, sms_rsp_q);
     sAPI_Debug("[NASA] SMS TX to %s (%d B) ret=%d", to, len, ret);
-    if (ret != SC_SMS_SUCESS) return;
 
-    for (waited = 0; waited < TRACKER_SMS_SEND_TIMEOUT_SEC; waited++) {
-        memset(&rsp, 0, sizeof(rsp));
-        if (sAPI_MsgQRecv(sms_rsp_q, &rsp, SEC_TO_TICKS(1)) == SC_SUCCESS) {
-            sAPI_Debug("[NASA] SMS TX result: primId=%d result=%d rsp=%s",
-                       rsp.arg1, rsp.arg2, rsp.arg3 != NULL ? (char *)rsp.arg3 : "");
-            if (rsp.arg3 != NULL) sAPI_Free(rsp.arg3);
-            return;
+    if (ret == SC_SMS_SUCESS) {
+        for (waited = 0; waited < TRACKER_SMS_SEND_TIMEOUT_SEC && !done; waited++) {
+            memset(&rsp, 0, sizeof(rsp));
+            if (sAPI_MsgQRecv(sms_rsp_q, &rsp, SEC_TO_TICKS(1)) == SC_SUCCESS) {
+                sAPI_Debug("[NASA] SMS TX result: primId=%d result=%d rsp=%s",
+                           rsp.arg1, rsp.arg2, rsp.arg3 != NULL ? (char *)rsp.arg3 : "");
+                if (rsp.arg3 != NULL) sAPI_Free(rsp.arg3);
+                done = TRUE;
+            } else {
+                tracker_alive();
+            }
         }
-        tracker_alive();
+        if (!done) sAPI_Debug("[NASA] SMS TX: het %ds chua co ket qua", TRACKER_SMS_SEND_TIMEOUT_SEC);
     }
-    sAPI_Debug("[NASA] SMS TX: het %ds chua co ket qua", TRACKER_SMS_SEND_TIMEOUT_SEC);
+
+    tracker_sms_restore_pdu(fmt_before);                   /* luôn chạy: gửi lỗi/hết giờ cũng đưa về PDU */
 }
 
 /** Xử lý 1 SMS: chạy lệnh, gửi phản hồi (giới hạn 1 phản hồi / TRACKER_SMS_REPLY_MIN_SEC cho cùng 1 số). */
@@ -228,6 +261,12 @@ static void tracker_sms_handle(const char *raw)
 
     len = tracker_cmd_execute(body, reply, sizeof(reply));
     if (len <= 0) return;                                  /* không phải lệnh hoặc lệnh chưa hỗ trợ */
+
+    /* NASA-13: chỉ báo khi đang có phiên (vòng phiên gửi ngay sau tracker_sms_poll); mất kết nối thì bỏ */
+    if (is_logged_in) {
+        tracker_copy_str(sms_report, sizeof(sms_report), reply);
+        sms_report_ready = TRUE;
+    }
 
     now = sAPI_GetTicks();
     if (strcmp(from, last_from) == 0 &&
