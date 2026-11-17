@@ -77,6 +77,7 @@
 #define TRACKER_LOGIN_BUF_SIZE           256
 #define TRACKER_JOURNEY_BUF_SIZE         384
 #define TRACKER_RX_BUF_SIZE              512
+#define TRACKER_CMD_LINE_IDLE_MS         300      /* lệnh TCP không có \r/\n: chạy sau 300 ms không nhận thêm byte */
 
 /* --- Thời gian hệ thống --- */
 #define TRACKER_DATETIME_WAIT_TIMEOUT_MS     90000  /* tối đa chờ có giờ hợp lệ để login */
@@ -91,7 +92,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261117b"
+#define TRACKER_FW_VERSION               "v1.0.261117c"
 #define TRACKER_LOGIN_CODE               "007507"
 
 /* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---

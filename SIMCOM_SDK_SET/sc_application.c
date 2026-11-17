@@ -269,6 +269,15 @@ static void tracker_run_session(tracker_ctx_t *c)
             tracker_drop_session(c);
             return;
         }
+        {
+            /* (1a) Phản hồi lệnh cấu hình từ server: báo bằng NASA-13 giống lệnh qua SMS (trước bước 1d/1e) */
+            const char *srv_rep = tracker_cmd_server_reply_take();
+            if (srv_rep != NULL && !tracker_send_sms_report(c, srv_rep)) {
+                sAPI_Debug("[NASA] NASA-13 gui loi -> reconnect");
+                tracker_drop_session(c);
+                return;
+            }
+        }
 
         /* (1b) Theo dõi GPS mỗi vòng (~100 ms): LED + log, không phụ thuộc chu kỳ gửi */
         tracker_monitor_gnss(&last_fix);

@@ -545,30 +545,40 @@ int tracker_cmd_execute(const char *line, char *reply, size_t reply_size)
     return len;
 }
 
-/** Xử lý 1 dòng nhận qua TCP: chạy lệnh, gửi phản hồi kèm "\r\n". @return FALSE nếu gửi lỗi (caller ngắt phiên). */
-static BOOL tracker_cmd_handle_line(int fd, const char *line)
+/* Phản hồi lệnh nhận qua TCP, chờ vòng phiên báo lên server bằng NASA-13 (giống lệnh qua SMS).
+ * Chỉ task tracker đọc/ghi. Nhiều lệnh trong cùng 1 lần poll thì chỉ giữ phản hồi cuối. */
+static char cmd_server_reply[TRACKER_RX_BUF_SIZE];
+static BOOL cmd_server_reply_ready = FALSE;
+
+const char *tracker_cmd_server_reply_take(void)
 {
-    char reply[TRACKER_RX_BUF_SIZE];
+    if (!cmd_server_reply_ready) return NULL;
+    cmd_server_reply_ready = FALSE;
+    return cmd_server_reply;
+}
+
+/** Xử lý 1 dòng nhận qua TCP: chạy lệnh, lưu phản hồi để gửi NASA-13. */
+static void tracker_cmd_handle_line(const char *line)
+{
     int len;
 
     sAPI_Debug("[NASA] RX: %s", line);
-    len = tracker_cmd_execute(line, reply, sizeof(reply) - 2);
-    if (len <= 0) return TRUE;
-    reply[len++] = '\r';
-    reply[len++] = '\n';
-    reply[len]   = '\0';
-    return tracker_tcp_send_all(fd, reply, len) == len;
+    len = tracker_cmd_execute(line, cmd_server_reply, sizeof(cmd_server_reply));
+    if (len > 0) cmd_server_reply_ready = TRUE;
 }
 
 /**
  * Kiểm tra phiên TCP còn sống bằng select() + recv(). Dữ liệu server gửi xuống được gom thành
- * từng dòng (kết thúc '\r' hoặc '\n') và xử lý lệnh cấu hình. @return FALSE nếu server đã đóng hoặc socket lỗi.
+ * từng dòng và xử lý lệnh cấu hình. Một dòng kết thúc khi gặp '\r'/'\n', hoặc khi không nhận thêm
+ * byte nào trong TRACKER_CMD_LINE_IDLE_MS (server gửi lệnh không kèm ký tự xuống dòng).
+ * @return FALSE nếu server đã đóng hoặc socket lỗi.
  */
 BOOL tracker_poll_server(int fd, int timeout_ms)
 {
     static char line[TRACKER_RX_BUF_SIZE];
     static int  line_len = 0;
     static int  line_fd = -1;                              /* socket của dữ liệu đang gom; đổi socket thì bỏ phần dở */
+    static UINT32 line_tick = 0;                           /* lúc nhận byte cuối của dòng đang gom */
     fd_set rfds;
     struct timeval tv = { timeout_ms / 1000, (timeout_ms % 1000) * 1000 };
     char rx[TRACKER_RX_BUF_SIZE];
@@ -581,10 +591,21 @@ BOOL tracker_poll_server(int fd, int timeout_ms)
 
     ret = select(fd + 1, &rfds, NULL, NULL, &tv);
     if (ret < 0) return FALSE;
-    if (ret == 0 || !FD_ISSET(fd, &rfds)) return TRUE;     /* không có dữ liệu = vẫn ổn */
+    if (ret == 0 || !FD_ISSET(fd, &rfds)) {                /* không có dữ liệu = vẫn ổn */
+        if (line_len > 0 &&
+            (UINT32)(sAPI_GetTicks() - line_tick) >= (UINT32)(TRACKER_CMD_LINE_IDLE_MS * TICKS_PER_SEC / 1000)) {
+            line[line_len] = '\0';                        /* dòng không có ký tự kết thúc: chạy luôn */
+            line_len = 0;
+            tracker_cmd_handle_line(line);
+        }
+        return TRUE;
+    }
 
     ret = recv(fd, rx, sizeof(rx) - 1, 0);
     if (ret <= 0) return FALSE;
+    rx[ret] = '\0';
+    sAPI_Debug("[NASA] TCP RX %d byte: %s", ret, rx);
+    line_tick = sAPI_GetTicks();
 
     for (i = 0; i < ret; i++) {
         char ch = rx[i];
@@ -592,7 +613,7 @@ BOOL tracker_poll_server(int fd, int timeout_ms)
             if (line_len > 0) {
                 line[line_len] = '\0';
                 line_len = 0;
-                if (!tracker_cmd_handle_line(fd, line)) return FALSE;
+                tracker_cmd_handle_line(line);
             }
         } else if (line_len < (int)sizeof(line) - 1) {
             line[line_len++] = ch;

@@ -57,4 +57,7 @@ void tracker_cmd_service(void);
 /** Kiểm tra phiên TCP còn sống, nhận và xử lý lệnh cấu hình "na,..."/"sa,..." từ server. @return FALSE nếu server đóng/socket lỗi. */
 BOOL tracker_poll_server(int fd, int timeout_ms);
 
+/** Phản hồi lệnh cấu hình nhận qua TCP đang chờ báo NASA-13 (rồi xóa cờ); NULL nếu không có. */
+const char *tracker_cmd_server_reply_take(void);
+
 #endif /* TRACKER_PROTOCOL_H */
