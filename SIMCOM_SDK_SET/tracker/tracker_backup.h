@@ -21,6 +21,14 @@ extern volatile BOOL device_enabled;
 /** Lệnh 38: đặt trạng thái tắt/mở và lưu xuống TRACKER_DEVICE_STATE_PATH. @return FALSE nếu ghi file lỗi. */
 BOOL tracker_device_set_enabled(BOOL enabled);
 
+/* Lệnh 58: cấu hình ngủ (0 = tắt chế độ ngủ) và trạng thái đang ngủ. Chỉ task tracker ghi. */
+extern volatile int  sleep_after_sec;   /* xx: ACC tắt liên tục bao lâu thì ngủ */
+extern volatile int  sleep_wake_sec;    /* yy: ngủ bao lâu thì thức */
+extern volatile BOOL device_sleeping;   /* đang ngủ (sa,29 báo PW,1 và GPS,2) */
+
+/** Lệnh 58: đặt cấu hình ngủ (đã kiểm tra hợp lệ) và lưu TRACKER_SLEEP_CFG_PATH. @return FALSE nếu ghi file lỗi. */
+BOOL tracker_sleep_cfg_set(int after_sec, int wake_sec);
+
 /**
  * Gọi 1 lần khi task tracker khởi động: đọc trạng thái lưu bền (TRACKER_STATE_PATH, TRACKER_DEVICE_STATE_PATH),
  * phát hiện file backup còn sót và khôi phục vị trí đọc đã gửi.

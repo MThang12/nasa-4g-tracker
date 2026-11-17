@@ -23,7 +23,8 @@ int tracker_build_backup(char *out, size_t out_size, uint32_t msg_id,
                          const backup_record_t *rec, int odometer_km, double heading);
 
 /**
- * NASA-13: báo lên server phản hồi của 1 lệnh nhận qua SMS, gửi qua socket phiên hiện tại.
+ * NASA-13: báo lên server phản hồi của 1 lệnh nhận qua SMS (hoặc thông báo vào chế độ ngủ, lệnh 58),
+ * gửi qua socket phiên hiện tại.
  * Dạng (theo mẫu server 13/11/2026): !NASA,13,<id>,<giờ>,info. <dòng 1>. <dòng 2>.#OK,*<checksum>
  * @return FALSE nếu gửi TCP lỗi (caller đóng phiên); TRUE nếu đã gửi hoặc bỏ qua (chưa có giờ).
  */

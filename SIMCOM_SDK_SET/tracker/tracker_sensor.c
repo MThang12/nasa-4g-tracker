@@ -41,10 +41,42 @@ void tracker_gnss_init(void)
     sAPI_GnssStartMode(SC_GNSS_START_HOT);
 }
 
-/** Tắt nguồn GNSS (lệnh 38). AT+CVAUX giữ nguyên. Bật lại bằng tracker_gnss_init(). */
+/*
+ * Dữ liệu GNSS cũ sau khi tắt nguồn GPS (lệnh 38, chế độ ngủ lệnh 58):
+ * sAPI_GnssNavdataGet() vẫn giữ nguyên giá trị lúc tắt (fixValid = TRUE, giờ/tọa độ cũ),
+ * xác minh qua log 17/11/2026 (NASA-1 sau khi thức mang giờ lúc vào ngủ).
+ * Khi tắt, lưu chuỗi giờ/ngày GPS; dữ liệu chỉ được coi là mới khi GPS báo fix với giờ/ngày khác.
+ * Chỉ task tracker đọc/ghi.
+ */
+static BOOL gnss_stale = FALSE;
+static char gnss_stale_time[sizeof(((SC_GNSSINFO *)0)->time)];
+static char gnss_stale_date[sizeof(((SC_GNSSINFO *)0)->date)];
+
+BOOL tracker_gnss_fix_valid(const SC_GNSSINFO *info)
+{
+    if (info == NULL || !info->fixValid) return FALSE;
+    if (!gnss_stale) return TRUE;
+    if (memcmp(info->time, gnss_stale_time, sizeof(gnss_stale_time)) == 0 &&
+        memcmp(info->date, gnss_stale_date, sizeof(gnss_stale_date)) == 0) return FALSE;   /* vẫn là dữ liệu lúc tắt */
+    gnss_stale = FALSE;
+    sAPI_Debug("[NASA] GNSS: co du lieu moi sau khi bat lai");
+    return TRUE;
+}
+
+/** Tắt nguồn GNSS (lệnh 38, lệnh 58). AT+CVAUX giữ nguyên. Bật lại bằng tracker_gnss_init(). */
 void tracker_gnss_power_off(void)
 {
-    SC_Gnss_Return_Code ret = sAPI_GnssPowerStatusSet(SC_GNSS_POWER_OFF);
+    SC_GNSSINFO *info = sAPI_GnssNavdataGet();
+    SC_Gnss_Return_Code ret;
+
+    memset(gnss_stale_time, 0, sizeof(gnss_stale_time));
+    memset(gnss_stale_date, 0, sizeof(gnss_stale_date));
+    if (info != NULL) {
+        memcpy(gnss_stale_time, info->time, sizeof(gnss_stale_time));
+        memcpy(gnss_stale_date, info->date, sizeof(gnss_stale_date));
+    }
+    gnss_stale = TRUE;
+    ret = sAPI_GnssPowerStatusSet(SC_GNSS_POWER_OFF);
     led_gnss_mode = LED_MODE_OFF;
     sAPI_Debug("[NASA] GNSS power off ret=%d", (int)ret);
 }
@@ -75,7 +107,7 @@ BOOL tracker_get_location(tracker_location_t *out)
     info = sAPI_GnssNavdataGet();
     if (info == NULL) return FALSE;
 
-    out->fixValid   = info->fixValid;
+    out->fixValid   = tracker_gnss_fix_valid(info);
     out->satellites = atoi(info->valid_sate_num);
     if (out->fixValid) {
         out->lat      = tracker_nmea_to_decimal(info->lat, info->lat_ns);
@@ -102,7 +134,7 @@ BOOL tracker_get_course(double *deg)
     char *end = NULL;
     double v;
 
-    if (deg == NULL || info == NULL || !info->fixValid) return FALSE;
+    if (deg == NULL || !tracker_gnss_fix_valid(info)) return FALSE;
     memcpy(buf, info->course, sizeof(info->course));
     buf[sizeof(info->course)] = '\0';
 
@@ -124,7 +156,7 @@ BOOL tracker_get_course(double *deg)
 void tracker_monitor_gnss(BOOL *last_fix)
 {
     SC_GNSSINFO *info = sAPI_GnssNavdataGet();
-    BOOL fix = (info != NULL && info->fixValid) ? TRUE : FALSE;   /* không có dữ liệu = coi như chưa fix */
+    BOOL fix = tracker_gnss_fix_valid(info);   /* không có dữ liệu / dữ liệu cũ = coi như chưa fix */
 
     if (fix != *last_fix) {
         sAPI_Debug("[NASA] GPS fix %s", fix ? "acquired" : "lost");

@@ -5,6 +5,7 @@
  */
 #include "tracker_time.h"
 #include "tracker_util.h"
+#include "tracker_sensor.h"   /* tracker_gnss_fix_valid() */
 
 /* ===========================================================================
  * 8. THỜI GIAN (GNSS -> RTC module -> mạng di động -> NTP)
@@ -63,7 +64,7 @@ static BOOL tracker_get_raw_utc_from_gnss(tracker_time_t *t)
     if (t == NULL) return FALSE;
 
     info = sAPI_GnssNavdataGet();
-    if (info == NULL || !info->fixValid) return FALSE;
+    if (!tracker_gnss_fix_valid(info)) return FALSE;    /* gồm cả dữ liệu cũ sau khi tắt GPS */
     if (info->time == NULL || info->date == NULL ||
         info->time[0] == '\0' || info->date[0] == '\0') return FALSE;
     /* Định dạng NMEA: time = hhmmss, date = ddmmyy */

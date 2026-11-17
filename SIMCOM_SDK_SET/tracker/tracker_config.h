@@ -58,6 +58,15 @@
 /* --- Lệnh 38 tắt/mở thiết bị: lưu trạng thái qua khởi động lại (1 byte '0'/'1'; không có file = mở) --- */
 #define TRACKER_DEVICE_STATE_PATH        "C:/nasa_power.dat"
 
+/* --- Lệnh 58 chế độ ngủ (giai đoạn 1: ngủ ở mức ứng dụng, chưa dùng sAPI_SystemSleepSet) ---
+ * na,58,xx,yy: ACC tắt liên tục xx giây -> ngủ; ngủ yy giây (hoặc ACC bật) -> thức. 0,0 = tắt chế độ ngủ.
+ * Lưu "xx,yy"; không có file = tắt. */
+#define TRACKER_SLEEP_CFG_PATH           "C:/nasa_sleep.dat"
+#define TRACKER_SLEEP_AFTER_MIN_SEC      10
+#define TRACKER_SLEEP_AFTER_MAX_SEC      65535
+#define TRACKER_SLEEP_WAKE_MIN_SEC       60
+#define TRACKER_SLEEP_WAKE_MAX_SEC       86400
+
 /* --- Lệnh cấu hình qua SMS (tracker_sms.c) --- */
 #define TRACKER_SMS_QUEUE_DEPTH          8        /* số URC/kết quả SMS chờ xử lý */
 #define TRACKER_SMS_SEND_TIMEOUT_SEC     30       /* chờ kết quả gửi SMS phản hồi */
@@ -82,7 +91,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261113e"
+#define TRACKER_FW_VERSION               "v1.0.261117b"
 #define TRACKER_LOGIN_CODE               "007507"
 
 /* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---

@@ -21,6 +21,9 @@ long flash_read_offset = 0;      /* vị trí đang đọc dở trong file backu
 BOOL flash_has_data    = FALSE;  /* cache: có file flash chưa gửi? Chỉ mở file khi cần thực sự */
 BOOL flash_ok          = TRUE;   /* bit 1 trạng thái: FALSE khi lần ghi backup xuống flash gần nhất bị lỗi */
 volatile BOOL device_enabled = TRUE;  /* lệnh 38: FALSE = thiết bị tắt */
+volatile int  sleep_after_sec = 0;     /* lệnh 58: 0 = chế độ ngủ tắt */
+volatile int  sleep_wake_sec  = 0;
+volatile BOOL device_sleeping = FALSE;
 
 /* ===========================================================================
  * TRẠNG THÁI LƯU BỀN QUA KHỞI ĐỘNG LẠI (TRACKER_STATE_PATH)
@@ -164,6 +167,59 @@ BOOL tracker_device_set_enabled(BOOL enabled)
     return ok;
 }
 
+/* ===========================================================================
+ * LỆNH 58: CẤU HÌNH NGỦ (TRACKER_SLEEP_CFG_PATH, chuỗi "xx,yy")
+ * =========================================================================== */
+
+/** Cấu hình hợp lệ: 0,0 (tắt) hoặc cả hai trong giới hạn. */
+static BOOL tracker_sleep_cfg_valid(long after_sec, long wake_sec)
+{
+    if (after_sec == 0 && wake_sec == 0) return TRUE;
+    return (after_sec >= TRACKER_SLEEP_AFTER_MIN_SEC && after_sec <= TRACKER_SLEEP_AFTER_MAX_SEC &&
+            wake_sec  >= TRACKER_SLEEP_WAKE_MIN_SEC  && wake_sec  <= TRACKER_SLEEP_WAKE_MAX_SEC) ? TRUE : FALSE;
+}
+
+static void tracker_sleep_cfg_load(void)
+{
+    char buf[32];
+    int n, a = 0, w = 0;
+    SCFILE *fp = sAPI_fopen(TRACKER_SLEEP_CFG_PATH, "rb");
+
+    if (fp == NULL) return;                               /* chưa cấu hình: tắt */
+    n = sAPI_fread(buf, 1, sizeof(buf) - 1, fp);          /* trả về số byte */
+    sAPI_fclose(fp);
+    if (n <= 0) return;
+    buf[n] = '\0';
+    if (sscanf(buf, "%d,%d", &a, &w) == 2 && tracker_sleep_cfg_valid(a, w)) {
+        sleep_after_sec = a;
+        sleep_wake_sec  = w;
+    }
+    sAPI_Debug("[NASA] Sleep cfg: %d,%d", sleep_after_sec, sleep_wake_sec);
+}
+
+BOOL tracker_sleep_cfg_set(int after_sec, int wake_sec)
+{
+    char buf[32];
+    int len;
+    BOOL ok;
+    SCFILE *fp;
+
+    if (!tracker_sleep_cfg_valid(after_sec, wake_sec)) return FALSE;
+    sleep_after_sec = after_sec;
+    sleep_wake_sec  = wake_sec;
+    len = snprintf(buf, sizeof(buf), "%d,%d", after_sec, wake_sec);
+    fp = sAPI_fopen(TRACKER_SLEEP_CFG_PATH, "wb");
+    if (fp == NULL) {
+        sAPI_Debug("[NASA] Sleep cfg: khong mo duoc file de ghi");
+        return FALSE;
+    }
+    ok = (sAPI_fwrite(buf, 1, len, fp) == len) ? TRUE : FALSE;
+    sAPI_fsync(fp);
+    sAPI_fclose(fp);
+    sAPI_Debug("[NASA] Sleep cfg -> %s, luu %s", buf, ok ? "OK" : "FAIL");
+    return ok;
+}
+
 void tracker_backup_startup(void)
 {
     /* Log dung lượng ổ C:/ (LittleFS) 1 lần khi khởi động, để đánh giá độ mòn flash.
@@ -179,6 +235,7 @@ void tracker_backup_startup(void)
 
     tracker_state_load();
     tracker_device_state_load();
+    tracker_sleep_cfg_load();
 
     /* Startup probe: kiểm tra file backup còn sót từ lần reset trước.
      * sAPI_access() trả 0 nếu file tồn tại. Nếu có → bật cache để gửi lại khi có mạng. */

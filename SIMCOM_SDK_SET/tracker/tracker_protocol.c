@@ -252,10 +252,11 @@ static BOOL tracker_parse_datetime(const char *dt, int *y, int *mo, int *d, int 
 static int tracker_cmd_device_info(char *out, size_t out_size)
 {
     char imei[32], now_dt[32], boot_dt[32], boot_str[16], ti_str[24];
-    SC_GNSSINFO *gi = device_enabled ? sAPI_GnssNavdataGet() : NULL;   /* GPS đã tắt: không đọc dữ liệu cũ */
+    BOOL awake = (device_enabled && !device_sleeping) ? TRUE : FALSE;  /* lệnh 38 tắt / lệnh 58 đang ngủ */
+    SC_GNSSINFO *gi = awake ? sAPI_GnssNavdataGet() : NULL;            /* GPS đã tắt: không đọc dữ liệu cũ */
     uint32_t uptime_sec = sAPI_GetTicks() / TICKS_PER_SEC;
     int y, mo, d, h, mi, s;
-    int gps_state = !device_enabled ? 2 : (gi != NULL ? 0 : 1);         /* 0 OK / 1 ERROR / 2 đang ngủ */
+    int gps_state = !awake ? 2 : (gi != NULL ? 0 : 1);                  /* 0 OK / 1 ERROR / 2 đang ngủ */
 
     tracker_get_imei(imei, sizeof(imei));
     snprintf(boot_str, sizeof(boot_str), "000000000000");
@@ -278,10 +279,10 @@ static int tracker_cmd_device_info(char *out, size_t out_size)
                     imei, TRACKER_FW_VERSION, TRACKER_HW_VERSION,
                     (unsigned long)(uptime_sec / 86400UL), boot_str,
                     is_logged_in ? 1 : 0, tracker_get_csq(),
-                    gps_state, (gi != NULL && gi->fixValid) ? 1 : 0,
+                    gps_state, tracker_gnss_fix_valid(gi) ? 1 : 0,
                     gi != NULL ? atoi(gi->valid_sate_num) : 0,
                     tracker_server_host(), tracker_server_port(), is_logged_in ? 1 : 0,
-                    device_enabled ? 0 : 1, tracker_get_voltage(),
+                    awake ? 0 : 1, tracker_get_voltage(),
                     ti_str);
 }
 
@@ -390,7 +391,7 @@ static int tracker_cmd_location(char *out, size_t out_size)
     double lat, lon;
     const char *tag;
 
-    if (device_enabled && tracker_get_location(&loc) && loc.fixValid) {
+    if (device_enabled && !device_sleeping && tracker_get_location(&loc) && loc.fixValid) {
         lat = loc.lat;
         lon = loc.lon;
         tag = "OK";
@@ -447,6 +448,38 @@ static int tracker_cmd_fota(const char *args, char *out, size_t out_size)
 }
 
 /**
+ * Lệnh 58 - Chế độ ngủ. args trỏ ngay sau mã lệnh.
+ *   sa,58       -> "che do ngu: <xx>,<yy>" hoặc "che do ngu: tat"
+ *   na,58,xx,yy -> lưu, phản hồi như sa,58. 0,0 = tắt; ngược lại xx 10..65535, yy 60..86400 (giây).
+ * Vào/ra ngủ thực hiện ở sc_application.c (tracker_sleep_due / tracker_sleep_wait).
+ */
+static int tracker_cmd_sleep(BOOL is_read, const char *args, char *out, size_t out_size)
+{
+    char *e = NULL;
+    const char *p;
+    long a, w;
+
+    if (!is_read) {
+        if (args[0] != ',') return snprintf(out, out_size, "loi tham so");
+        a = strtol(args + 1, &e, 10);
+        if (e == args + 1 || *e != ',') return snprintf(out, out_size, "loi tham so");
+        p = e + 1;
+        w = strtol(p, &e, 10);
+        if (e == p) return snprintf(out, out_size, "loi tham so");
+        while (*e == ' ' || *e == '\r' || *e == '\n') e++;
+        if (*e != '\0') return snprintf(out, out_size, "loi tham so");
+        if (!(a == 0 && w == 0) &&
+            (a < TRACKER_SLEEP_AFTER_MIN_SEC || a > TRACKER_SLEEP_AFTER_MAX_SEC ||
+             w < TRACKER_SLEEP_WAKE_MIN_SEC  || w > TRACKER_SLEEP_WAKE_MAX_SEC)) {
+            return snprintf(out, out_size, "loi tham so");
+        }
+        (void)tracker_sleep_cfg_set((int)a, (int)w);
+    }
+    if (sleep_after_sec <= 0 || sleep_wake_sec <= 0) return snprintf(out, out_size, "che do ngu: tat");
+    return snprintf(out, out_size, "che do ngu: %d,%d", sleep_after_sec, sleep_wake_sec);
+}
+
+/**
  * Lệnh 38 - Tắt/mở thiết bị. args trỏ ngay sau mã lệnh (",0" / ",1" với na).
  *   sa,38   -> "trang thai thiet bi: <0/1>"
  *   na,38,0 -> tắt: "thiet bi ngung hoat dong" (task tracker đóng phiên, tắt GPS, chỉ nhận SMS)
@@ -498,6 +531,8 @@ int tracker_cmd_execute(const char *line, char *reply, size_t reply_size)
         len = tracker_cmd_fota(end, reply, reply_size);
     } else if (!is_read && code == 9) {
         len = tracker_cmd_reset(end, reply, reply_size);
+    } else if (code == 58) {
+        len = tracker_cmd_sleep(is_read, end, reply, reply_size);
     } else if (code == 38) {
         len = tracker_cmd_power(is_read, end, reply, reply_size);
     } else {

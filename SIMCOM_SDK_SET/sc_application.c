@@ -164,6 +164,70 @@ static BOOL tracker_login(tracker_ctx_t *c)
     return FALSE;
 }
 
+/* ===========================================================================
+ * LỆNH 58: CHẾ ĐỘ NGỦ (giai đoạn 1 - ngủ ở mức ứng dụng)
+ * =========================================================================== */
+static BOOL   sleep_acc_was_off  = FALSE;   /* đang đếm thời gian ACC tắt */
+static UINT32 sleep_acc_off_tick = 0;       /* mốc bắt đầu ACC tắt */
+
+/** TRUE khi chế độ ngủ bật, thiết bị đang mở (lệnh 38) và ACC đã tắt liên tục >= sleep_after_sec. */
+static BOOL tracker_sleep_due(void)
+{
+    if (sleep_after_sec <= 0 || sleep_wake_sec <= 0 || !device_enabled || tracker_get_acc_status()) {
+        sleep_acc_was_off = FALSE;
+        return FALSE;
+    }
+    if (!sleep_acc_was_off) {
+        sleep_acc_was_off  = TRUE;
+        sleep_acc_off_tick = sAPI_GetTicks();
+        return FALSE;
+    }
+    if (tracker_cmd_fota_pending() || tracker_cmd_reset_pending()) return FALSE;   /* để lệnh 33/9 chạy trước */
+    return ((UINT32)(sAPI_GetTicks() - sleep_acc_off_tick) >= (UINT32)sleep_after_sec * TICKS_PER_SEC) ? TRUE : FALSE;
+}
+
+/**
+ * Ngủ: đóng TCP, tắt GPS, LED NET/GNSS tắt, LED PWR nháy chậm; không gửi NASA, không lưu backup.
+ * Vẫn nhận SMS (lệnh 9 reset được). Thức khi: đủ sleep_wake_sec, ACC bật, lệnh 38 tắt thiết bị,
+ * lệnh 58 tắt chế độ ngủ, hoặc có lệnh 1/33 chờ. Thức rồi thì bật GPS, đếm lại xx giây ACC tắt.
+ */
+static void tracker_sleep_wait(tracker_ctx_t *c)
+{
+    UINT32 start = sAPI_GetTicks();
+    const char *why = "het thoi gian";
+
+    tracker_tcp_close(&c->sockfd);
+    is_logged_in = FALSE;
+    tracker_gnss_power_off();
+    led_net_mode = LED_MODE_OFF;
+    led_pwr_mode = LED_MODE_BLINK_SLOW;
+    device_sleeping = TRUE;
+    sAPI_Debug("[NASA] SLEEP: ngu toi da %ds (thuc som neu ACC bat)", sleep_wake_sec);
+
+    while (1) {
+        sAPI_TaskSleep(SEC_TO_TICKS(1));
+        tracker_alive();
+        tracker_sms_poll();
+        tracker_cmd_service();                             /* lệnh 9 reset được khi đang ngủ */
+
+        if (tracker_get_acc_status())                      { why = "ACC bat"; break; }
+        if (!device_enabled)                               { why = "lenh 38 tat thiet bi"; break; }
+        if (sleep_after_sec <= 0 || sleep_wake_sec <= 0)   { why = "lenh 58 tat che do ngu"; break; }
+        if (tracker_cmd_fota_pending())                    { why = "lenh 33"; break; }
+        if (tracker_cmd_reconnect_take())                  { why = "lenh 1"; break; }   /* vòng chính sẽ kết nối server mới */
+        if ((UINT32)(sAPI_GetTicks() - start) >= (UINT32)sleep_wake_sec * TICKS_PER_SEC) break;
+    }
+
+    device_sleeping   = FALSE;
+    sleep_acc_was_off = FALSE;                             /* thức: đếm lại xx giây ACC tắt */
+    sAPI_Debug("[NASA] SLEEP: thuc day (%s) sau %lus", why,
+               (unsigned long)((sAPI_GetTicks() - start) / TICKS_PER_SEC));
+    if (device_enabled) {                                  /* lệnh 38 tắt: tracker_device_off_wait lo phần còn lại */
+        led_pwr_mode = LED_MODE_ON;
+        tracker_gnss_init();
+    }
+}
+
 /**
  * Bước 5: vòng lặp phiên làm việc (mỗi vòng 100 ms), chạy đến khi mất kết nối.
  *
@@ -190,7 +254,7 @@ static void tracker_run_session(tracker_ctx_t *c)
     BOOL send_now = TRUE;
     BOOL last_acc = tracker_get_acc_status();
     SC_GNSSINFO *gi = sAPI_GnssNavdataGet();
-    BOOL last_fix = (gi != NULL && gi->fixValid) ? TRUE : FALSE;
+    BOOL last_fix = tracker_gnss_fix_valid(gi);
 
     dt_next[0] = '\0';                                    /* chưa có timestamp tham chiếu */
 
@@ -241,6 +305,14 @@ static void tracker_run_session(tracker_ctx_t *c)
         }
         if (tracker_cmd_fota_pending()) {
             sAPI_Debug("[NASA] Lenh 33: dong phien, cap nhat firmware");
+            tracker_drop_session(c);
+            return;
+        }
+
+        /* (1f) Lệnh 58: ACC tắt đủ xx giây -> báo NASA-13 rồi đóng phiên; vòng chính cho thiết bị ngủ */
+        if (tracker_sleep_due()) {
+            sAPI_Debug("[NASA] Lenh 58: ACC tat %ds -> vao che do ngu", sleep_after_sec);
+            (void)tracker_send_sms_report(c, "thiet bi vao che do ngu");
             tracker_drop_session(c);
             return;
         }
@@ -426,6 +498,10 @@ static void sTask_NasaTracker(void *arg)
             tracker_device_off_wait(&ctx);
             continue;
         }
+        if (tracker_sleep_due()) {                         /* lệnh 58 khi không có phiên (vd không vào được server) */
+            tracker_sleep_wait(&ctx);
+            continue;
+        }
         led_net_mode = LED_MODE_BLINK_FAST;
         tracker_wait_network();
         led_net_mode = LED_MODE_BLINK_SLOW;
@@ -455,6 +531,10 @@ static void sTask_NasaTracker(void *arg)
             tracker_run_session(&ctx);
         } else {
             tracker_server_result(FALSE);
+        }
+        if (tracker_sleep_due()) {                         /* phiên vừa đóng vì lệnh 58: ngủ ngay, không lưu backup */
+            tracker_sleep_wait(&ctx);
+            continue;
         }
         tracker_delay(TRACKER_TCP_RETRY_SEC);              /* nghỉ rồi kết nối lại (backup vẫn chạy) */
     }

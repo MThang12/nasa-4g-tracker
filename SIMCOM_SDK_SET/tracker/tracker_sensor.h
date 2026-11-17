@@ -19,6 +19,12 @@ void tracker_gnss_init(void);
 /** Tắt nguồn GNSS (lệnh 38), LED GNSS tắt. Bật lại bằng tracker_gnss_init(). */
 void tracker_gnss_power_off(void);
 
+/**
+ * Thay cho info->fixValid: FALSE nếu info NULL, chưa fix, hoặc vẫn là dữ liệu cũ còn lại
+ * từ lúc tắt GPS (tracker_gnss_power_off) chưa được GPS cập nhật.
+ */
+BOOL tracker_gnss_fix_valid(const SC_GNSSINFO *info);
+
 /** Đọc vị trí hiện tại (tọa độ chỉ có khi đã fix). @return FALSE nếu SDK không trả dữ liệu. */
 BOOL tracker_get_location(tracker_location_t *out);
 
