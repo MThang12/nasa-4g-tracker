@@ -432,6 +432,7 @@ void tracker_process_backup(void)
     BOOL acc_on;
     const char *reason;
 
+    tracker_motion_poll();                         /* lọc chạy/dừng cả khi mất phiên (gọi trong mọi vòng chờ) */
     if (is_logged_in || !has_logged_in_once || !device_enabled) return;   /* thiết bị tắt (lệnh 38): không lưu */
     now = tracker_get_seconds_today();
     if (now == 0) return;

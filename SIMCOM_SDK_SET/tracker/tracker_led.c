@@ -5,6 +5,7 @@
  */
 #include "tracker_led.h"
 #include "tracker_util.h"
+#include "tracker_sensor.h"   /* tracker_acc_poll() */
 
 /* Chế độ LED do task chính ghi, task LED đọc (volatile vì dùng chung giữa 2 task) */
 volatile tracker_led_mode_t led_net_mode  = LED_MODE_OFF;
@@ -138,6 +139,7 @@ void sTask_LedControl(void *arg)
 
     while (1) {
         tick_100ms++;
+        tracker_acc_poll();                               /* lọc nhiễu ACC mỗi 100 ms */
         tracker_led_apply(TRACKER_LED_PWR_PIN,  led_pwr_mode,  tick_100ms);
         tracker_led_apply(TRACKER_LED_NET_PIN,  led_net_mode,  tick_100ms);
         tracker_led_apply(TRACKER_LED_GNSS_PIN, led_gnss_mode, tick_100ms);

@@ -10,8 +10,20 @@
 /** Cấu hình chân ACC là ngõ vào pull-up. */
 void tracker_acc_init(void);
 
-/** @return TRUE nếu ACC bật (chân xuống mức thấp). */
+/** @return TRUE nếu ACC bật (chân xuống mức thấp), đã lọc nhiễu TRACKER_ACC_DEBOUNCE_MS. */
 BOOL tracker_get_acc_status(void);
+
+/** Lọc nhiễu ACC: gọi mỗi 100 ms từ task LED. */
+void tracker_acc_poll(void);
+
+/** Cập nhật trạng thái chạy/dừng và điểm neo theo mẫu GNSS mới (gọi thường xuyên từ task tracker). */
+void tracker_motion_poll(void);
+
+/** @return TRUE nếu xe đang chạy theo bộ lọc chạy/dừng. */
+BOOL tracker_motion_is_moving(void);
+
+/** Ghi log tốc độ GNSS thô và sau quy đổi (để xác minh đơn vị tốc độ). */
+void tracker_gnss_log_speed(void);
 
 /** Bật nguồn GNSS, chọn GPS+BDS+QZSS, cập nhật 1 Hz, khởi động nóng. */
 void tracker_gnss_init(void);
@@ -25,7 +37,7 @@ void tracker_gnss_power_off(void);
  */
 BOOL tracker_gnss_fix_valid(const SC_GNSSINFO *info);
 
-/** Đọc vị trí hiện tại (tọa độ chỉ có khi đã fix). @return FALSE nếu SDK không trả dữ liệu. */
+/** Đọc vị trí hiện tại đã lọc chạy/dừng (dừng: tốc độ 0, tọa độ điểm neo; tọa độ chỉ có khi đã fix). @return FALSE nếu SDK không trả dữ liệu. */
 BOOL tracker_get_location(tracker_location_t *out);
 
 /** Vị trí có fix gần nhất (lưu RAM mỗi lần tracker_get_location có fix; mất khi khởi động lại). @return FALSE nếu chưa có. */

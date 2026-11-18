@@ -92,7 +92,7 @@
 #define TRACKER_DEVICE_IMEI_PLACEHOLDER  "000000000000000"  /* dùng khi đọc IMEI/ICCID lỗi */
 #define TRACKER_PLATE_NUMBER             "51A-12345"
 #define TRACKER_HW_VERSION               "v1.0"
-#define TRACKER_FW_VERSION               "v1.0.261117c"
+#define TRACKER_FW_VERSION               "v1.0.261118a"
 #define TRACKER_LOGIN_CODE               "007507"
 
 /* --- Nguyên nhân reset (trường 11 của NASA-1, theo tài liệu giao thức v1.3) ---
@@ -144,10 +144,26 @@
 #define TRACKER_FUEL_AF                  0.0
 #define TRACKER_TEMPERATURE              0.0
 
-/* --- Hướng chạy (trường 12 của NASA-2) ---
- * Chỉ cập nhật khi xe chạy từ ngưỡng này trở lên: lúc đứng yên/chạy chậm hướng GNSS dao động mạnh,
- * khi đó giữ nguyên hướng gần nhất. */
-#define TRACKER_HEADING_MIN_SPEED_KMH    3.0
+/* --- ACC: mức mới phải giữ liên tục ngần này (ms) mới nhận (task LED đọc chân mỗi 100 ms) --- */
+#define TRACKER_ACC_DEBOUNCE_MS          3000
+
+/* --- Tốc độ GNSS: hệ số đổi trường speed của SC_GNSSINFO sang km/h ---
+ * Đơn vị của trường speed: CHƯA XÁC MINH (1.0 = coi là km/h; nếu đo thực tế là knot thì đổi 1.852).
+ * Log "[NASA] GNSS speed raw=..." mỗi bản NASA-2 để đối chiếu với tốc độ thật. */
+#define TRACKER_GNSS_SPEED_TO_KMH        1.0
+
+/* --- Chạy / dừng và điểm neo (chống trôi GPS khi đứng yên; tham số theo firmware RV4G) ---
+ * Hướng chạy (trường 12 NASA-2) chỉ cập nhật khi đang chạy, khi dừng giữ hướng gần nhất. */
+#define TRACKER_MOVING_SPEED_KMH         3.0      /* ngưỡng tốc độ chạy/dừng */
+#define TRACKER_MOVING_CONFIRM_SEC       3        /* > ngưỡng liên tục ngần này giây mới coi là chạy */
+#define TRACKER_STOPPED_CONFIRM_SEC      10       /* <= ngưỡng liên tục ngần này giây mới coi là dừng */
+#define TRACKER_MOVING_MIN_DISPLACEMENT_M 15.0    /* đang dừng: phải rời điểm neo ngần này mới coi là chạy */
+#define TRACKER_PARKED_ACC_OFF_MAX_M     150.0    /* ACC tắt mà cách điểm neo ngần này: xe bị kéo, làm lại điểm neo */
+#define TRACKER_ANCHOR_MAX_HDOP          2.5      /* mẫu HDOP lớn hơn không gộp vào điểm neo */
+#define TRACKER_ANCHOR_OUTLIER_M         25.0     /* mẫu cách trung bình hơn ngần này bị bỏ */
+#define TRACKER_ANCHOR_MIN_SAMPLES_FOR_REJECT 10  /* chưa đủ số mẫu thì chưa loại mẫu xa */
+#define TRACKER_ANCHOR_RESTART_REJECTS   30       /* số mẫu bị loại liên tiếp thì làm lại điểm neo */
+#define TRACKER_ANCHOR_MAX_SAMPLES       900      /* đủ số mẫu thì giữ cố định điểm neo */
 
 /* --- Watchdog ---
  * WDT phần cứng (simcom_wtd.h) do task LED cho ăn mỗi 1 s, NHƯNG chỉ khi task tracker còn báo sống

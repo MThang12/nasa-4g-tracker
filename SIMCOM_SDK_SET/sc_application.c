@@ -281,6 +281,7 @@ static void tracker_run_session(tracker_ctx_t *c)
 
         /* (1b) Theo dõi GPS mỗi vòng (~100 ms): LED + log, không phụ thuộc chu kỳ gửi */
         tracker_monitor_gnss(&last_fix);
+        tracker_motion_poll();                             /* chạy/dừng + điểm neo, mỗi mẫu GNSS 1 lần */
 
         /* (1c) Lệnh cấu hình qua SMS (đọc hàng đợi URC không chặn), báo lên server bằng NASA-13 */
         tracker_sms_poll();
@@ -378,8 +379,9 @@ static void tracker_run_session(tracker_ctx_t *c)
         if (!tracker_get_location(&loc)) memset(&loc, 0, sizeof(loc));
         {
             double course;
-            /* Hướng chạy: chỉ cập nhật khi có fix và xe chạy đủ nhanh; ngược lại giữ hướng cũ */
-            if (loc.fixValid && loc.speed >= TRACKER_HEADING_MIN_SPEED_KMH && tracker_get_course(&course)) {
+            /* Hướng chạy: chỉ cập nhật khi có fix và bộ lọc báo xe đang chạy; ngược lại giữ hướng cũ */
+            tracker_gnss_log_speed();
+            if (loc.fixValid && tracker_motion_is_moving() && tracker_get_course(&course)) {
                 c->heading = course;
             }
         }
