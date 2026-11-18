@@ -13,12 +13,12 @@ Chức năng hiện có, theo `SIMCOM_SDK_SET/sc_application.c`:
 - Đọc vị trí GNSS (GPS + BDS + QZSS, tốc độ cập nhật 1 Hz), trạng thái ACC (khóa xe), CSQ, điện áp nguồn xe qua ADC.
 - Kết nối TCP tới server và chạy giao thức **NASA v1.3**:
   - `!NASA,<type>,<msg_id>,<fields...>*<checksum>\r\n`, trong đó checksum là tổng giá trị byte của phần đứng trước `*`.
-  - NASA-1: đăng nhập. NASA-2: hành trình realtime. NASA-7: gửi bù dữ liệu backup. NASA-13: báo lên server lệnh nhận qua SMS kèm phản hồi (mục 4). NASA-3 đã bỏ (12/11/2026, bản patch lưu ngoài repo ở `E:\nasa-4g-backup\nasa3_v1.0.261112a.patch`).
+  - NASA-1: đăng nhập. NASA-2: hành trình realtime. NASA-7: gửi bù dữ liệu backup. NASA-13: báo lên server phản hồi của lệnh cấu hình (nhận qua SMS hoặc TCP) và thông báo vào chế độ ngủ (mục 4). NASA-3 đã bỏ (12/11/2026, bản patch lưu ngoài repo ở `E:\nasa-4g-backup\nasa3_v1.0.261112a.patch`).
   - Server mặc định: `tcp.rovigps.vn:2598` (`TRACKER_SERVER_HOST/PORT`). Đổi được bằng lệnh 1 (lưu `C:/nasa_server.dat`).
 - Chu kỳ gửi NASA-2: ACC bật thì 10 s/lần, ACC tắt thì 300 s/lần. Gửi ngay khi ACC đổi trạng thái. Hẹn giờ theo `sAPI_GetTicks()` với mốc `due_tick` cố định (commit `196bfa0`), không đếm vòng lặp, không gửi dồn bù.
 - Khi mất kết nối: lưu backup theo ACC (bật 20 s/bản, tắt 300 s/bản, ACC đổi trạng thái thì lưu ngay; `TRACKER_BACKUP_ACC_ON_SEC/OFF_SEC`). RAM giữ tối đa 100 bản; cứ đủ `TRACKER_BACKUP_FLUSH_EVERY` (10) bản thì ghi cả lô xuống `C:/nasa_backup.dat`, nên mất nguồn chỉ mất < 10 bản. Có mạng lại thì gửi bù bằng NASA-7.
   - Flash `C:/` (log khởi động 11/11/2026): tổng 446464 B, trống ≈ 258048 B. Mỗi bản ghi backup ≈ 88 B → đủ ≈ 16 giờ mất mạng khi ACC bật.
-- **Lệnh cấu hình** (bảng `Config Command NASA-4G latest.xlsx` ở thư mục gốc, file chưa commit): nhận qua TCP (server gửi chữ trần, mỗi lệnh 1 dòng) và qua SMS, dùng chung `tracker_cmd_execute()`. Đọc `sa,<mã>`, ghi `na,<mã>,<nội dung>`. Đã có mã 1, 9, 27, 29, 33, 38, 58 (bảng ở mục 4); mã khác bị bỏ qua, không phản hồi.
+- **Lệnh cấu hình** (bảng `Config Command NASA-4G latest.xlsx` ở thư mục gốc, file chưa commit): nhận qua TCP (server gửi chữ trần, không bắt buộc xuống dòng) và qua SMS, dùng chung `tracker_cmd_execute()`; phản hồi qua TCP bằng NASA-13, qua SMS bằng SMS trả lời (kèm NASA-13 nếu đang có phiên). Đọc `sa,<mã>`, ghi `na,<mã>,<nội dung>`. Đã có mã 1, 9, 27, 29, 33, 38, 58 (bảng ở mục 4); mã khác bị bỏ qua, không phản hồi.
 - **Cập nhật firmware từ xa (FOTA app)** bằng lệnh 33: tải `customer_app.bin` qua HTTP (mục 4).
 - Tự phục hồi: reset RF (`AT+CFUN=0/1`) khi không đăng ký được mạng, tự kết nối lại TCP.
 - Đồng bộ giờ theo thứ tự GNSS → RTC (`AT+CCLK`) → giờ mạng → NTP (`pool.ntp.org`).
@@ -36,7 +36,7 @@ Thông số server, biển số, mã đăng nhập, phiên bản và mọi cấu
 | Các biến thể khác trong SDK | `A7677S_LANS/LANV/MANS_1606_V702_OPENSDK` | `kernel/`, `sc_lib/` |
 | CPU | Toolchain biên dịch với `-mcpu=cortex-r4 -mthumb -mfloat-abi=soft` | `config/ToolChain.cmake:17-18`. "Cortex-R5" theo thông tin dự án: **CHƯA XÁC MINH** trong repo |
 | RAM userspace | 256 KB (`ORIGIN 0x7e052000, LENGTH 0x40000`) | `config/A7677S_MANV_1606_V702_OPENSDK_linkscript.ld` |
-| Bản build gần nhất | text 68689 / data 1581 / bss 14645 B (`v1.0.261117b`). Bản `v1.0.261113e`: 66916 / 1581 / 14609. Bản `v1.0.261112d`: 62417 / 1505 / 12242. Bản `v1.0.261109` (vừa tắt `HAS_DEMO`): 55159 / 1467 / 10756. Khi còn demo: text ≈ 197 KB, data ≈ 5 KB, bss ≈ 35 KB | `arm-none-eabi-size customer_app.elf` |
+| Bản build gần nhất | text 68811 / data 1581 / bss 15162 B (`v1.0.261117c`). Bản `v1.0.261117b`: 68689 / 1581 / 14645. Bản `v1.0.261113e`: 66916 / 1581 / 14609. Bản `v1.0.261112d`: 62417 / 1505 / 12242. Bản `v1.0.261109` (vừa tắt `HAS_DEMO`): 55159 / 1467 / 10756. Khi còn demo: text ≈ 197 KB, data ≈ 5 KB, bss ≈ 35 KB | `arm-none-eabi-size customer_app.elf` |
 
 Ngoại vi do firmware sử dụng (lấy từ code; comment ghi "sơ đồ RV26"). **Phần cứng thực tế: CHƯA XÁC MINH.** Repo không có schematic của board.
 
@@ -107,7 +107,7 @@ Từ commit tách module, mã nguồn chia theo tính năng (tìm hàm theo tên
 | `tracker/tracker_time.c` | Giờ GNSS/RTC/mạng/NTP, `tracker_get_datetime` |
 | `tracker/tracker_sensor.c` | ACC, GNSS (`tracker_gnss_init`, `tracker_gnss_power_off`, `tracker_gnss_fix_valid`, `tracker_get_last_fix`), hướng, điện áp ADC |
 | `tracker/tracker_net.c` | SIM, mạng, PDP, TCP, `tracker_wait_network`, `tracker_activate_pdp`, server cấu hình (lệnh 1: `tracker_server_*`), FOTA (lệnh 33: `tracker_fota_run`) |
-| `tracker/tracker_protocol.c` | Đóng gói NASA-1/2/7, `msg_id`, ACK login, `tracker_poll_server` (gom dòng lệnh từ server), lệnh cấu hình `tracker_cmd_execute` (1, 9, 27, 29, 33, 38, 58), NASA-13 `tracker_send_sms_report` |
+| `tracker/tracker_protocol.c` | Đóng gói NASA-1/2/7, `msg_id`, ACK login, `tracker_poll_server` (gom dòng lệnh từ server, `tracker_cmd_server_reply_take`), lệnh cấu hình `tracker_cmd_execute` (1, 9, 27, 29, 33, 38, 58), NASA-13 `tracker_send_sms_report` |
 | `tracker/tracker_sms.c` | Nhận lệnh cấu hình qua SMS, giải mã PDU, gửi SMS phản hồi (`tracker_sms_init`, `tracker_sms_poll`), phản hồi chờ báo NASA-13 (`tracker_sms_report_take`) |
 | `sc_application.c` | `tracker_login`, `tracker_run_session`, `tracker_device_off_wait`, chế độ ngủ lệnh 58 (`tracker_sleep_due`, `tracker_sleep_wait`), `sTask_NasaTracker`, `userSpace_Main`, bảng `userSpaceEntry` |
 
@@ -134,7 +134,7 @@ Hàm chỉ dùng trong một file thì giữ `static`; hàm/biến dùng chéo �
   2. `tracker_activate_pdp`: `sAPI_TcpipPdpActive(1, 1)`. Sau đó nếu có lệnh 33 đang chờ thì `tracker_fota_run()` (thành công thì reset, lỗi thì quay lại bước 1).
   3. `tracker_tcp_connect`: `getaddrinfo` / `socket` / `connect` (blocking).
   4. `tracker_login`: chờ có giờ, gửi NASA-1, chờ ACK 15 s bằng `select`.
-  5. `tracker_run_session`: vòng 100 ms gồm poll socket (kèm xử lý lệnh từ server) → theo dõi GNSS → poll SMS rồi gửi NASA-13 nếu có → thoát nếu lệnh 38 tắt / lệnh 1 đổi server / lệnh 9 chờ reset / lệnh 33 chờ cập nhật / đến hạn ngủ lệnh 58 (gửi NASA-13 trước) → gửi 1 bản NASA-7 → NASA-2 khi đến hạn.
+  5. `tracker_run_session`: vòng 100 ms gồm poll socket (kèm xử lý lệnh từ server) → gửi NASA-13 phản hồi lệnh server nếu có → theo dõi GNSS → poll SMS rồi gửi NASA-13 nếu có → thoát nếu lệnh 38 tắt / lệnh 1 đổi server / lệnh 9 chờ reset / lệnh 33 chờ cập nhật / đến hạn ngủ lệnh 58 (gửi NASA-13 trước) → gửi 1 bản NASA-7 → NASA-2 khi đến hạn.
   6. Mất kết nối thì `tracker_delay(5)` rồi lặp lại.
 
 **Các thành phần khác**
@@ -144,7 +144,14 @@ Hàm chỉ dùng trong một file thì giữ `static`; hàm/biến dùng chéo �
   - Thời gian bắt GPS (đo 12/11/2026, ngoài trời): tắt/bật nguồn → dưới 1 phút. Lần chạy đầu ngay sau khi nạp firmware mất ≈ 10 phút; giả thuyết là nạp firmware làm mất dữ liệu vệ tinh đã lưu (**CHƯA XÁC MINH**). Chưa dùng AGPS; SDK có `sAPI_GnssAgpsSeviceOpen()` (`simcom_gps.h`, `demo_gps.c`) nếu cần rút ngắn.
 - **AT:** dùng `sAPI_SendATCMDWaitResp` trên kênh 10 (đồng bộ, không cần task URC).
 - **UART:** tracker không tự cấu hình UART. Callback UART/URC thuộc phần demo (`sc_demo/src/uart_api.c`, `cus_urc.c`).
-- **TCP/IP:** socket lwIP kiểu BSD, blocking. Theo `scfw_socket_define.h`, `SO_SNDTIMEO` chưa được hỗ trợ. Dữ liệu server gửi xuống được gom theo dòng (`\r`/`\n`) trong `tracker_poll_server`; dòng `sa,`/`na,` được chạy như lệnh cấu hình và phản hồi kèm `\r\n`, dòng khác chỉ ghi log `[NASA] RX:`.
+- **TCP/IP:** socket lwIP kiểu BSD, blocking. Theo `scfw_socket_define.h`, `SO_SNDTIMEO` chưa được hỗ trợ.
+- **Lệnh cấu hình từ server (`tracker_poll_server`, `tracker_protocol.c`, từ `v1.0.261117c`):** server gửi chữ trần giống SMS (vd `sa,29`), phản hồi báo lên bằng NASA-13 giống lệnh SMS.
+  - Mọi lần `recv` đều ghi log `[NASA] TCP RX <n> byte: <dữ liệu>`.
+  - Dữ liệu được gom thành dòng. Một dòng kết thúc khi gặp `\r`/`\n`, hoặc khi không nhận thêm byte nào trong `TRACKER_CMD_LINE_IDLE_MS` (300 ms) để chạy được lệnh server gửi không kèm xuống dòng. Lý do: bản cũ chỉ chạy lệnh khi có `\r`/`\n`; người dùng thử gửi lệnh từ server (17/11/2026) thì log CATStudio không có dòng nào, nguyên nhân **CHƯA XÁC MINH** (giả thuyết: server gửi không kèm xuống dòng).
+  - Dòng `sa,`/`na,` chạy qua `tracker_cmd_execute()` (log `[NASA] RX:` và `CMD … ->`); dòng khác chỉ ghi log `[NASA] RX:`.
+  - Phản hồi lưu vào bộ đệm, vòng phiên lấy bằng `tracker_cmd_server_reply_take()` ngay sau `tracker_poll_server` và gửi `tracker_send_sms_report()` (NASA-13), trước bước đóng phiên do lệnh 38/1/9. Không còn gửi phản hồi chữ trần.
+  - Nhiều lệnh trong 1 lần poll chỉ báo phản hồi lệnh cuối; 2 lệnh liền nhau không có xuống dòng bị ghép thành 1 dòng (→ `loi tham so`). Lệnh đến khi chưa có phiên (đang chờ ACK login, đang ngủ/tắt) bị bỏ.
+  - Đã chạy thành công trên thiết bị 18/11/2026 (người dùng báo). Nếu sau này log không có `TCP RX` thì dữ liệu không tới thiết bị (kiểm tra phía server).
 - **Lệnh cấu hình (`tracker_cmd_execute`, `tracker_protocol.c`):** trả về độ dài phản hồi, 0 = không phản hồi. Phản hồi nhiều dòng nối bằng `\n`. Tham số sai → `loi tham so`.
 
   | Mã | Lệnh | Chức năng | Phản hồi | Ràng buộc / lưu trữ |
@@ -300,7 +307,7 @@ Lưu ý về build:
 
 Kiểm tra sau khi build (khi được phép):
 1. Build không có warning hay error (đếm `warning:` trong log; target `userspace` có `-Werror`).
-2. `tools/win32/cross_tool/gcc-arm-none-eabi/bin/arm-none-eabi-size.exe out/.../customer_app.elf`: so sánh text/data/bss với bản trước (bản `v1.0.261117b`: 68689 / 1581 / 14645).
+2. `tools/win32/cross_tool/gcc-arm-none-eabi/bin/arm-none-eabi-size.exe out/.../customer_app.elf`: so sánh text/data/bss với bản trước (bản `v1.0.261117c`: 68811 / 1581 / 15162).
    - `-Wformat-truncation` (bật bởi `-Wall`, thành lỗi do `-Werror`) báo khi `snprintf("%s")` copy từ mảng lớn sang mảng nhỏ hơn; dùng hàm copy có giới hạn (như `tracker_copy_str` trong `tracker_sms.c`).
    - Sau khi build, nếu `git diff --ignore-cr-at-eol -- config/userspaceConfig.h` rỗng thì đổi file về LF để Git không báo thay đổi.
 3. Kiểm tra chuỗi phiên bản trong `.bin` khớp `TRACKER_FW_VERSION`, và `customer_app.bin` bên trong `burn.zip` trùng hash với bản vừa build.
